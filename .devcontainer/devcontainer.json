@@ -1,0 +1,21 @@
+{
+	"name": "tictactoe-java",
+	"image": "mcr.microsoft.com/devcontainers/base:noble",
+	"features": {
+		"ghcr.io/devcontainers/features/java:1": {
+			"version": "25",
+			"jdkDistro": "zulu",
+			"installGradle": false
+		}
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"vscjava.vscode-java-pack",
+				"vscjava.vscode-gradle"
+			]
+		}
+	},
+	"postCreateCommand": "chmod +x ./gradlew && ./gradlew --version",
+	"remoteUser": "vscode"
+}
