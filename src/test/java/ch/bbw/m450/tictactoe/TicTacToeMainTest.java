@@ -9,39 +9,58 @@ import org.junit.jupiter.api.Test;
 
 class TicTacToeMainTest {
 
+	// helper: builds a board from a compact layout ('X' = CROSS, 'O' = CIRCLE, '.' = empty)
+	private static Stone[] board(String layout) {
+		var cells = layout.replaceAll("\\s", "");
+		if (cells.length() != TicTacToeMain.BOARD_SIZE) {
+			throw new IllegalArgumentException("board layout must have exactly 9 cells, got " + cells.length());
+		}
+		var board = new Stone[TicTacToeMain.BOARD_SIZE];
+		for (var i = 0; i < cells.length(); i++) {
+			board[i] = switch (cells.charAt(i)) {
+				case 'X' -> Stone.CROSS;
+				case 'O' -> Stone.CIRCLE;
+				case '.' -> null;
+				default -> throw new IllegalArgumentException("unexpected character '" + cells.charAt(i) + "'");
+			};
+		}
+		return board;
+	}
+
+	// fixtures: named boards reused across the tests below
+	private static final Stone[] ROW_WIN_CROSS = board("""
+			XXX
+			.O.
+			O..
+			""");
+
+	private static final Stone[] DIAGONAL_WIN_CROSS = board("""
+			O.X
+			.X.
+			X.O
+			""");
+
+	private static final Stone[] FULL_BOARD_NO_WINNER = board("""
+			XOX
+			XOO
+			OXX
+			""");
+
 	@Test
 	void isWin_detectsRowWin() {
-		var board = new Stone[]{
-				Stone.CROSS, Stone.CROSS, Stone.CROSS,
-				null, Stone.CIRCLE, null,
-				Stone.CIRCLE, null, null
-		};
-
-		assertThat(TicTacToeMain.isWin(board, Stone.CROSS)).isTrue();
-		assertThat(TicTacToeMain.isWin(board, Stone.CIRCLE)).isFalse();
+		assertThat(TicTacToeMain.isWin(ROW_WIN_CROSS, Stone.CROSS)).isTrue();
+		assertThat(TicTacToeMain.isWin(ROW_WIN_CROSS, Stone.CIRCLE)).isFalse();
 	}
 
 	@Test
 	void isWin_detectsDiagonalWin() {
-		var board = new Stone[]{
-				Stone.CIRCLE, null, Stone.CROSS,
-				null, Stone.CROSS, null,
-				Stone.CROSS, null, Stone.CIRCLE
-		};
-
-		assertThat(TicTacToeMain.isWin(board, Stone.CROSS)).isTrue();
+		assertThat(TicTacToeMain.isWin(DIAGONAL_WIN_CROSS, Stone.CROSS)).isTrue();
 	}
 
 	@Test
 	void isWin_returnsFalseForNonWinningBoard() {
-		var board = new Stone[]{
-				Stone.CROSS, Stone.CIRCLE, Stone.CROSS,
-				Stone.CROSS, Stone.CIRCLE, Stone.CIRCLE,
-				Stone.CIRCLE, Stone.CROSS, Stone.CROSS
-		};
-
-		assertThat(TicTacToeMain.isWin(board, Stone.CROSS)).isFalse();
-		assertThat(TicTacToeMain.isWin(board, Stone.CIRCLE)).isFalse();
+		assertThat(TicTacToeMain.isWin(FULL_BOARD_NO_WINNER, Stone.CROSS)).isFalse();
+		assertThat(TicTacToeMain.isWin(FULL_BOARD_NO_WINNER, Stone.CIRCLE)).isFalse();
 	}
 
 	@Test
