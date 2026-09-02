@@ -12,11 +12,15 @@ Diese Datei dokumentiert die vorhandenen Unit-Tests nach dem **Given-When-Then**
 
 Quelle: [`src/test/java/ch/bbw/m450/tictactoe/TicTacToeMainTest.java`](../src/test/java/ch/bbw/m450/tictactoe/TicTacToeMainTest.java)
 
+Die `isWin_*`-Tests bauen ihre Bretter nicht mehr inline in den Testmethoden auf, sondern greifen auf benannte Fixtures zu:
+
+- **Fixtures** (`private static final Stone[] ...`): `ROW_WIN_CROSS`, `DIAGONAL_WIN_CROSS`, `FULL_BOARD_NO_WINNER`.
+
 ### `isWin_detectsRowWin`
 
 | | |
 |---|---|
-| **Given** | Ein Brett, auf dem die oberste Reihe (Felder 0, 1, 2) vollständig mit `CROSS` besetzt ist. |
+| **Given** | Fixture `ROW_WIN_CROSS`: die oberste Reihe (Felder 0, 1, 2) ist vollständig mit `CROSS` besetzt. |
 | **When** | `TicTacToeMain.isWin(board, ...)` für `CROSS` und für `CIRCLE` aufgerufen wird. |
 | **Then** | `isWin` liefert `true` für `CROSS` und `false` für `CIRCLE`. |
 
@@ -24,7 +28,7 @@ Quelle: [`src/test/java/ch/bbw/m450/tictactoe/TicTacToeMainTest.java`](../src/te
 
 | | |
 |---|---|
-| **Given** | Ein Brett, auf dem die Diagonale (Felder 0, 4, 8) vollständig mit `CROSS` besetzt ist. |
+| **Given** | Fixture `DIAGONAL_WIN_CROSS`: die Diagonale (Felder 0, 4, 8) ist vollständig mit `CROSS` besetzt. |
 | **When** | `TicTacToeMain.isWin(board, Stone.CROSS)` aufgerufen wird. |
 | **Then** | `isWin` liefert `true`. |
 
@@ -32,7 +36,7 @@ Quelle: [`src/test/java/ch/bbw/m450/tictactoe/TicTacToeMainTest.java`](../src/te
 
 | | |
 |---|---|
-| **Given** | Ein vollständig gefülltes Brett ohne Dreier-Reihe für `CROSS` oder `CIRCLE` (unentschieden). |
+| **Given** | Fixture `FULL_BOARD_NO_WINNER`: ein vollständig gefülltes Brett ohne Dreier-Reihe für `CROSS` oder `CIRCLE` (unentschieden). |
 | **When** | `TicTacToeMain.isWin(board, ...)` für `CROSS` und für `CIRCLE` aufgerufen wird. |
 | **Then** | `isWin` liefert für beide Farben `false`. |
 
