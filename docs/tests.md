@@ -36,7 +36,7 @@ Die `isWin_*`-Tests bauen ihre Bretter nicht mehr inline in den Testmethoden auf
 
 | | |
 |---|---|
-| **Given** | Fixture `DIAGONAL_WIN_CROSS`: die Diagonale (Felder 0, 4, 8) ist vollständig mit `CROSS` besetzt. |
+| **Given** | Fixture `DIAGONAL_WIN_CROSS`: die Anti-Diagonale (Felder 2, 4, 6) ist vollständig mit `CROSS` besetzt. |
 | **When** | `TicTacToeMain.isWin(board, Stone.CROSS)` aufgerufen wird. |
 | **Then** | `isWin` liefert `true`. |
 
