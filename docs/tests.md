@@ -24,6 +24,14 @@ Die `isWin_*`-Tests bauen ihre Bretter nicht mehr inline in den Testmethoden auf
 | **When** | `TicTacToeMain.isWin(board, ...)` für `CROSS` und für `CIRCLE` aufgerufen wird. |
 | **Then** | `isWin` liefert `true` für `CROSS` und `false` für `CIRCLE`. |
 
+### `isWin_detectsAllWinningLines` (parametrisiert)
+
+| | |
+|---|---|
+| **Given** | Ein leeres Brett, auf dem eine bestimmte Gewinnlinie (Reihe, Spalte oder Diagonale) mit einer Farbe besetzt wird. Die Positionen und die Farbe kommen aus der `@MethodSource`-Methode `winningLines()`, die alle 8 Gewinnlinien abdeckt (3 Reihen, 3 Spalten, 2 Diagonalen), abwechselnd mit `CROSS` und `CIRCLE`. |
+| **When** | `TicTacToeMain.isWin(board, color)` für jede der 8 Kombinationen aufgerufen wird. |
+| **Then** | `isWin` liefert für jede Kombination `true`. |
+
 ### `isWin_detectsDiagonalWin`
 
 | | |

@@ -5,7 +5,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ch.bbw.m450.tictactoe.TicTacToePlayer.Stone;
 import ch.bbw.m450.tictactoe.players.GreedyPlayer;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class TicTacToeMainTest {
 
@@ -43,6 +47,33 @@ class TicTacToeMainTest {
 	void isWin_returnsFalseForNonWinningBoard() {
 		assertThat(TicTacToeMain.isWin(FULL_BOARD_NO_WINNER, Stone.CROSS)).isFalse();
 		assertThat(TicTacToeMain.isWin(FULL_BOARD_NO_WINNER, Stone.CIRCLE)).isFalse();
+	}
+
+	@ParameterizedTest(name = "positions {0} won by {1}")
+	@MethodSource("winningLines")
+	void isWin_detectsAllWinningLines(int[] positions, Stone color) {
+		var board = new Stone[TicTacToeMain.BOARD_SIZE];
+		for (var position : positions) {
+			board[position] = color;
+		}
+
+		assertThat(TicTacToeMain.isWin(board, color)).isTrue();
+	}
+
+	private static Stream<Arguments> winningLines() {
+		return Stream.of(
+				// rows
+				Arguments.of(new int[]{0, 1, 2}, Stone.CROSS),
+				Arguments.of(new int[]{3, 4, 5}, Stone.CIRCLE),
+				Arguments.of(new int[]{6, 7, 8}, Stone.CROSS),
+				// columns
+				Arguments.of(new int[]{0, 3, 6}, Stone.CIRCLE),
+				Arguments.of(new int[]{1, 4, 7}, Stone.CROSS),
+				Arguments.of(new int[]{2, 5, 8}, Stone.CIRCLE),
+				// diagonals
+				Arguments.of(new int[]{0, 4, 8}, Stone.CROSS),
+				Arguments.of(new int[]{2, 4, 6}, Stone.CIRCLE)
+		);
 	}
 
 	@Test
