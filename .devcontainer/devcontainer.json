@@ -1,12 +1,7 @@
 {
 	"name": "tictactoe-java",
-	"image": "mcr.microsoft.com/devcontainers/base:noble",
-	"features": {
-		"ghcr.io/devcontainers/features/java:1": {
-			"version": "25",
-			"jdkDistro": "zulu",
-			"installGradle": false
-		}
+	"build": {
+		"dockerfile": "Dockerfile"
 	},
 	"customizations": {
 		"vscode": {
