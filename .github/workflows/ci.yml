@@ -50,15 +50,50 @@ jobs:
       contents: write
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download coverage report
         uses: actions/download-artifact@v4
         with:
           name: jacoco-coverage-report
           path: coverage-report
 
+      - name: Check for published site
+        id: site
+        run: |
+          if git ls-remote --exit-code --heads origin gh-pages > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout published site
+        if: steps.site.outputs.exists == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Assemble site with updated history
+        run: |
+          mkdir -p site/data
+          if [ -f gh-pages/data/coverage.csv ]; then
+            cp gh-pages/data/coverage.csv site/data/coverage.csv
+          else
+            echo "Datum,Commit,Coverage" > site/data/coverage.csv
+          fi
+
+          coverage=$(bash .github/scripts/coverage-percent.sh coverage-report)
+          echo "$(date -u +%Y-%m-%d),${GITHUB_SHA:0:7},$coverage" >> site/data/coverage.csv
+
+          cp .github/pages/index.html site/index.html
+          cp -r coverage-report/html site/coverage
+
+          echo "Coverage auf main: **$coverage %**" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Publish to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: coverage-report/html
-          keep_files: true
+          publish_dir: site

@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test Coverage · TicTacTest</title>
+<style>
+	:root {
+		color-scheme: light;
+		--plane: #f9f9f7;
+		--surface: #fcfcfb;
+		--ink: #0b0b0b;
+		--ink-secondary: #52514e;
+		--ink-muted: #898781;
+		--grid: #e1e0d9;
+		--axis: #c3c2b7;
+		--series: #2a78d6;
+		--good: #006300;
+		--bad: #d03b3b;
+		--border: rgba(11, 11, 11, 0.10);
+	}
+
+	@media (prefers-color-scheme: dark) {
+		:root {
+			color-scheme: dark;
+			--plane: #0d0d0d;
+			--surface: #1a1a19;
+			--ink: #ffffff;
+			--ink-secondary: #c3c2b7;
+			--ink-muted: #898781;
+			--grid: #2c2c2a;
+			--axis: #383835;
+			--series: #3987e5;
+			--good: #0ca30c;
+			--bad: #e66767;
+			--border: rgba(255, 255, 255, 0.10);
+		}
+	}
+
+	* { box-sizing: border-box; }
+
+	body {
+		margin: 0;
+		background: var(--plane);
+		color: var(--ink);
+		font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+		font-size: 15px;
+		line-height: 1.5;
+	}
+
+	.page {
+		max-width: 880px;
+		margin: 0 auto;
+		padding: 40px 20px 64px;
+	}
+
+	h1 {
+		font-size: 24px;
+		font-weight: 600;
+		margin: 0;
+		letter-spacing: -0.01em;
+	}
+
+	.sub {
+		margin: 4px 0 0;
+		color: var(--ink-secondary);
+		font-size: 14px;
+	}
+
+	code {
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 0.92em;
+	}
+
+	.tiles {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12px;
+		margin: 28px 0 12px;
+	}
+
+	.tile {
+		flex: 1 1 180px;
+		background: var(--surface);
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		padding: 16px 18px;
+	}
+
+	.tile-label {
+		font-size: 12px;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--ink-muted);
+	}
+
+	.tile-value {
+		font-size: 34px;
+		font-weight: 600;
+		line-height: 1.15;
+		margin-top: 6px;
+		letter-spacing: -0.02em;
+	}
+
+	.tile-value.small { font-size: 22px; font-weight: 500; }
+	.tile-note { font-size: 13px; color: var(--ink-secondary); margin-top: 2px; }
+	.up { color: var(--good); }
+	.down { color: var(--bad); }
+
+	.card {
+		background: var(--surface);
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		padding: 20px;
+		margin-top: 12px;
+	}
+
+	h2 {
+		font-size: 15px;
+		font-weight: 600;
+		margin: 0;
+	}
+
+	.card-sub {
+		margin: 2px 0 12px;
+		color: var(--ink-muted);
+		font-size: 13px;
+	}
+
+	.chart-wrap { position: relative; }
+
+	svg { display: block; width: 100%; height: auto; }
+	svg:focus-visible { outline: 2px solid var(--series); outline-offset: 4px; border-radius: 4px; }
+
+	.tooltip {
+		position: absolute;
+		pointer-events: none;
+		background: var(--surface);
+		border: 1px solid var(--border);
+		box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+		border-radius: 8px;
+		padding: 8px 10px;
+		font-size: 13px;
+		white-space: nowrap;
+		transform: translate(-50%, -100%);
+		transition: opacity 80ms linear;
+	}
+
+	.tooltip b { font-weight: 600; }
+	.tooltip .meta { color: var(--ink-secondary); font-size: 12px; }
+
+	details.card > summary {
+		cursor: pointer;
+		font-size: 15px;
+		font-weight: 600;
+		list-style-position: outside;
+	}
+
+	table {
+		width: 100%;
+		border-collapse: collapse;
+		margin-top: 14px;
+		font-size: 14px;
+		font-variant-numeric: tabular-nums;
+	}
+
+	th, td {
+		text-align: left;
+		padding: 7px 10px 7px 0;
+		border-bottom: 1px solid var(--grid);
+	}
+
+	th {
+		font-size: 12px;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--ink-muted);
+		font-weight: 500;
+	}
+
+	td.num, th.num { text-align: right; padding-right: 0; }
+
+	.empty {
+		color: var(--ink-muted);
+		font-size: 14px;
+		padding: 28px 0;
+		text-align: center;
+	}
+
+	footer {
+		margin-top: 24px;
+		font-size: 14px;
+	}
+
+	a { color: var(--series); }
+</style>
+</head>
+<body>
+<main class="page">
+	<header>
+		<h1>Test Coverage</h1>
+		<p class="sub">TicTacTest · JaCoCo Instruction Coverage auf <code>main</code></p>
+	</header>
+
+	<section class="tiles" id="tiles"></section>
+
+	<section class="card">
+		<h2>Verlauf</h2>
+		<p class="card-sub">Eine Messung pro Build auf <code>main</code>. Die gestrichelte Linie markiert das Quality Gate von 90&nbsp;%.</p>
+		<div class="chart-wrap" id="chartWrap">
+			<svg id="chart" role="img" aria-label="Verlauf der Test Coverage"></svg>
+			<div class="tooltip" id="tooltip" hidden></div>
+		</div>
+	</section>
+
+	<details class="card">
+		<summary>Datentabelle</summary>
+		<table>
+			<thead>
+				<tr>
+					<th>Datum</th>
+					<th>Commit</th>
+					<th class="num">Coverage</th>
+				</tr>
+			</thead>
+			<tbody id="tableBody"></tbody>
+		</table>
+	</details>
+
+	<footer>
+		<a href="coverage/">Vollständiger JaCoCo-Report →</a>
+	</footer>
+</main>
+
+<script>
+const THRESHOLD = 90;
+const NS = 'http://www.w3.org/2000/svg';
+
+const chart = document.getElementById('chart');
+const chartWrap = document.getElementById('chartWrap');
+const tooltip = document.getElementById('tooltip');
+
+let rows = [];
+let selected = -1;
+let layout = null;
+
+const num = value => value.toFixed(1).replace('.', ',');
+const esc = value => String(value).replace(/[<>&"]/g, c => ({'<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;'}[c]));
+
+function formatDate(iso) {
+	const parts = iso.split('-');
+	return parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : iso;
+}
+
+function parseCsv(text) {
+	return text.trim().split(/\r?\n/)
+		.map(line => line.split(','))
+		.filter(cells => cells.length >= 3 && !/^datum$/i.test(cells[0].trim()))
+		.map(cells => ({date: cells[0].trim(), commit: cells[1].trim(), coverage: parseFloat(cells[2])}))
+		.filter(row => Number.isFinite(row.coverage));
+}
+
+function renderTiles() {
+	const latest = rows[rows.length - 1];
+	const previous = rows.length > 1 ? rows[rows.length - 2] : null;
+	const tiles = [
+		`<div class="tile">
+			<div class="tile-label">Aktuell</div>
+			<div class="tile-value">${num(latest.coverage)}&nbsp;%</div>
+			<div class="tile-note">${esc(formatDate(latest.date))} · <code>${esc(latest.commit)}</code></div>
+		</div>`
+	];
+
+	if (previous) {
+		const delta = latest.coverage - previous.coverage;
+		const cls = delta > 0 ? 'up' : delta < 0 ? 'down' : '';
+		const sign = delta > 0 ? '+' : delta < 0 ? '−' : '±';
+		tiles.push(`<div class="tile">
+			<div class="tile-label">Seit letzter Messung</div>
+			<div class="tile-value small ${cls}">${sign}${num(Math.abs(delta))} Prozentpunkte</div>
+			<div class="tile-note">vorher ${num(previous.coverage)}&nbsp;%</div>
+		</div>`);
+	}
+
+	const passing = latest.coverage >= THRESHOLD;
+	tiles.push(`<div class="tile">
+		<div class="tile-label">Quality Gate (≥ ${THRESHOLD}&nbsp;%)</div>
+		<div class="tile-value small ${passing ? 'up' : 'down'}">${passing ? '✓ erfüllt' : '✕ nicht erfüllt'}</div>
+		<div class="tile-note">${rows.length} Messung${rows.length === 1 ? '' : 'en'} erfasst</div>
+	</div>`);
+
+	document.getElementById('tiles').innerHTML = tiles.join('');
+}
+
+function renderTable() {
+	document.getElementById('tableBody').innerHTML = rows.slice().reverse()
+		.map(row => `<tr>
+			<td>${esc(formatDate(row.date))}</td>
+			<td><code>${esc(row.commit)}</code></td>
+			<td class="num">${num(row.coverage)}&nbsp;%</td>
+		</tr>`).join('');
+}
+
+function scale() {
+	const values = rows.map(row => row.coverage).concat([THRESHOLD]);
+	const lo = Math.min(...values);
+	const hi = Math.max(...values);
+	const pad = Math.max(2, (hi - lo) * 0.3);
+	return {
+		min: Math.max(0, Math.floor(lo - pad)),
+		max: Math.min(100, Math.ceil(hi + pad))
+	};
+}
+
+function ticks(min, max) {
+	const steps = [1, 2, 5, 10, 20, 25];
+	const step = steps.find(candidate => (max - min) / candidate <= 5) || 25;
+	const out = [];
+	for (let value = Math.ceil(min / step) * step; value <= max; value += step) {
+		out.push(value);
+	}
+	return out;
+}
+
+function renderChart() {
+	const width = Math.max(chartWrap.clientWidth, 280);
+	const height = 300;
+	const margin = {top: 16, right: 18, bottom: 42, left: 52};
+	const innerWidth = width - margin.left - margin.right;
+	const innerHeight = height - margin.top - margin.bottom;
+	const domain = scale();
+
+	const x = index => margin.left + (rows.length === 1 ? innerWidth / 2 : (index / (rows.length - 1)) * innerWidth);
+	const y = value => margin.top + innerHeight - ((value - domain.min) / (domain.max - domain.min)) * innerHeight;
+
+	layout = {x, y, width, height, margin, innerWidth, innerHeight};
+
+	const parts = [];
+
+	for (const value of ticks(domain.min, domain.max)) {
+		parts.push(`<line x1="${margin.left}" y1="${y(value)}" x2="${margin.left + innerWidth}" y2="${y(value)}" stroke="var(--grid)" stroke-width="1"/>`);
+		parts.push(`<text x="${margin.left - 10}" y="${y(value) + 4}" text-anchor="end" font-size="11" fill="var(--ink-muted)">${value}&#8201;%</text>`);
+	}
+
+	parts.push(`<line x1="${margin.left}" y1="${y(THRESHOLD)}" x2="${margin.left + innerWidth}" y2="${y(THRESHOLD)}" stroke="var(--ink-muted)" stroke-width="1.5" stroke-dasharray="5 4"/>`);
+	parts.push(`<text x="${margin.left + innerWidth}" y="${y(THRESHOLD) - 7}" text-anchor="end" font-size="11" fill="var(--ink-muted)">Gate ${THRESHOLD}&#8201;%</text>`);
+
+	if (rows.length > 1) {
+		const path = rows.map((row, index) => `${index === 0 ? 'M' : 'L'}${x(index).toFixed(1)} ${y(row.coverage).toFixed(1)}`).join(' ');
+		parts.push(`<path d="${path}" fill="none" stroke="var(--series)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
+	}
+
+	const dotRadius = rows.length > 40 ? 0 : 4;
+	if (dotRadius) {
+		for (const [index, row] of rows.entries()) {
+			parts.push(`<circle cx="${x(index).toFixed(1)}" cy="${y(row.coverage).toFixed(1)}" r="${dotRadius}" fill="var(--series)" stroke="var(--surface)" stroke-width="2"/>`);
+		}
+	}
+
+	const labelStep = Math.ceil(rows.length / 6);
+	for (const [index, row] of rows.entries()) {
+		if (index % labelStep === 0 || index === rows.length - 1) {
+			parts.push(`<text x="${x(index).toFixed(1)}" y="${height - 16}" text-anchor="middle" font-size="11" fill="var(--ink-muted)">${esc(formatDate(row.date))}</text>`);
+		}
+	}
+
+	parts.push(`<line x1="${margin.left}" y1="${margin.top + innerHeight}" x2="${margin.left + innerWidth}" y2="${margin.top + innerHeight}" stroke="var(--axis)" stroke-width="1"/>`);
+	parts.push(`<g id="cursor" opacity="0"><line stroke="var(--axis)" stroke-width="1"/><circle r="6" fill="var(--series)" stroke="var(--surface)" stroke-width="2"/></g>`);
+
+	chart.setAttribute('viewBox', `0 0 ${width} ${height}`);
+	chart.setAttribute('height', height);
+	chart.innerHTML = parts.join('');
+
+	if (selected >= 0) {
+		highlight(selected);
+	}
+}
+
+function nearestIndex(clientX) {
+	const box = chart.getBoundingClientRect();
+	const position = (clientX - box.left) / box.width * layout.width;
+	let best = 0;
+	let bestDistance = Infinity;
+	for (let index = 0; index < rows.length; index++) {
+		const distance = Math.abs(layout.x(index) - position);
+		if (distance < bestDistance) {
+			bestDistance = distance;
+			best = index;
+		}
+	}
+	return best;
+}
+
+function highlight(index) {
+	selected = index;
+	const row = rows[index];
+	const cursor = chart.querySelector('#cursor');
+	const px = layout.x(index);
+	const py = layout.y(row.coverage);
+
+	cursor.setAttribute('opacity', '1');
+	const line = cursor.querySelector('line');
+	line.setAttribute('x1', px);
+	line.setAttribute('x2', px);
+	line.setAttribute('y1', layout.margin.top);
+	line.setAttribute('y2', layout.margin.top + layout.innerHeight);
+	const dot = cursor.querySelector('circle');
+	dot.setAttribute('cx', px);
+	dot.setAttribute('cy', py);
+
+	tooltip.hidden = false;
+	tooltip.innerHTML = `<b>${num(row.coverage)}&nbsp;%</b><div class="meta">${esc(formatDate(row.date))} · ${esc(row.commit)}</div>`;
+	const scaleFactor = chart.getBoundingClientRect().width / layout.width;
+	tooltip.style.left = `${px * scaleFactor}px`;
+	tooltip.style.top = `${py * scaleFactor - 12}px`;
+}
+
+function clearHighlight() {
+	selected = -1;
+	tooltip.hidden = true;
+	const cursor = chart.querySelector('#cursor');
+	if (cursor) {
+		cursor.setAttribute('opacity', '0');
+	}
+}
+
+function enableInteraction() {
+	chart.setAttribute('tabindex', '0');
+	chart.addEventListener('pointermove', event => highlight(nearestIndex(event.clientX)));
+	chart.addEventListener('pointerleave', clearHighlight);
+	chart.addEventListener('blur', clearHighlight);
+	chart.addEventListener('focus', () => highlight(selected < 0 ? rows.length - 1 : selected));
+	chart.addEventListener('keydown', event => {
+		const current = selected < 0 ? rows.length - 1 : selected;
+		const moves = {ArrowLeft: current - 1, ArrowRight: current + 1, Home: 0, End: rows.length - 1};
+		if (!(event.key in moves)) {
+			return;
+		}
+		event.preventDefault();
+		highlight(Math.min(rows.length - 1, Math.max(0, moves[event.key])));
+	});
+}
+
+function showEmpty(message) {
+	chartWrap.innerHTML = `<p class="empty">${esc(message)}</p>`;
+}
+
+fetch('data/coverage.csv', {cache: 'no-store'})
+	.then(response => response.ok ? response.text() : Promise.reject(new Error(response.status)))
+	.then(text => {
+		rows = parseCsv(text);
+		if (rows.length === 0) {
+			showEmpty('Noch keine Messwerte erfasst.');
+			return;
+		}
+		renderTiles();
+		renderTable();
+		renderChart();
+		enableInteraction();
+		window.addEventListener('resize', renderChart);
+	})
+	.catch(() => showEmpty('Coverage-Historie konnte nicht geladen werden.'));
+</script>
+</body>
+</html>

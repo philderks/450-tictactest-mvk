@@ -1,0 +1,96 @@
+name: Coverage Gate
+
+on:
+  pull_request:
+    types: [ opened, synchronize, reopened ]
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Stash coverage script
+        # main may not contain the script yet, so keep a copy outside the working tree
+        run: cp .github/scripts/coverage-percent.sh "$RUNNER_TEMP/coverage-percent.sh"
+
+      - name: Measure coverage of this branch
+        id: branch
+        run: |
+          chmod +x ./gradlew
+          ./gradlew test jacocoTestReport
+          echo "coverage=$(bash "$RUNNER_TEMP/coverage-percent.sh")" >> "$GITHUB_OUTPUT"
+
+      - name: Measure coverage of main
+        id: main
+        run: |
+          git checkout --force origin/main
+          rm -rf build
+          chmod +x ./gradlew
+          ./gradlew test jacocoTestReport
+          echo "coverage=$(bash "$RUNNER_TEMP/coverage-percent.sh")" >> "$GITHUB_OUTPUT"
+
+      - name: Compare coverage
+        id: gate
+        env:
+          MAIN: ${{ steps.main.outputs.coverage }}
+          BRANCH: ${{ steps.branch.outputs.coverage }}
+        run: |
+          delta=$(awk -v b="$BRANCH" -v m="$MAIN" 'BEGIN { printf "%+.1f", b - m }')
+          if awk -v b="$BRANCH" -v m="$MAIN" 'BEGIN { exit !(b < m) }'; then
+            result=FAIL
+          else
+            result=PASS
+          fi
+
+          printf 'main:      %s %%\nBranch:    %s %%\nÄnderung:  %s Prozentpunkte\nErgebnis:  %s\n' \
+            "$MAIN" "$BRANCH" "$delta" "$result"
+
+          {
+            echo "## Test Coverage"
+            echo
+            echo "| | Coverage |"
+            echo "| --- | ---: |"
+            echo "| \`main\` | $MAIN % |"
+            echo "| Branch | $BRANCH % |"
+            echo "| Änderung | $delta Prozentpunkte |"
+            echo
+            if [ "$result" = PASS ]; then
+              echo "**PASS** - Coverage Gate bestanden"
+            else
+              echo "**FAIL** - Coverage Gate nicht bestanden: der Branch liegt unter \`main\`."
+            fi
+          } > gate-report.md
+
+          cat gate-report.md >> "$GITHUB_STEP_SUMMARY"
+          echo "result=$result" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on pull request
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: gh pr comment "${{ github.event.pull_request.number }}" --body-file gate-report.md --edit-last --create-if-none
+
+      - name: Enforce gate
+        if: steps.gate.outputs.result == 'FAIL'
+        run: exit 1
