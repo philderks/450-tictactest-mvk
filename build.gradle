@@ -34,5 +34,19 @@ jacocoTestReport {
 	reports {
 		xml.required = true
 		html.required = true
+		csv.required = true
 	}
 }
+
+jacocoTestCoverageVerification {
+	dependsOn jacocoTestReport
+	violationRules {
+		rule {
+			limit {
+				minimum = 0.90
+			}
+		}
+	}
+}
+
+check.dependsOn jacocoTestCoverageVerification

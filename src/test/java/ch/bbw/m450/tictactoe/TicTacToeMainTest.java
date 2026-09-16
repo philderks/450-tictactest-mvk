@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ch.bbw.m450.tictactoe.TicTacToePlayer.Stone;
 import ch.bbw.m450.tictactoe.players.GreedyPlayer;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -91,5 +93,44 @@ class TicTacToeMainTest {
 		var winner = TicTacToeMain.play(new GreedyPlayer(), new GreedyPlayer());
 
 		assertThat(winner).isEqualTo(Stone.CROSS);
+	}
+
+	@Test
+	void play_throwsIllegalStateException_whenPlayerReturnsOutOfRangePosition() {
+		var brokenPlayer = new QueuePlayer(-1);
+
+		assertThatThrownBy(() -> TicTacToeMain.play(brokenPlayer, new GreedyPlayer()))
+				.isInstanceOf(IllegalStateException.class);
+	}
+
+	@Test
+	void play_returnsNull_onDraw() {
+		// X: 0,2,3,7,8  O: 1,4,5,6 -> full board, no line for either color
+		var xPlayer = new QueuePlayer(0, 2, 3, 7, 8);
+		var oPlayer = new QueuePlayer(1, 4, 5, 6);
+
+		var winner = TicTacToeMain.play(xPlayer, oPlayer);
+
+		assertThat(winner).isNull();
+	}
+
+	/**
+	 * Test double that plays a fixed, predetermined sequence of moves, ignoring the board.
+	 */
+	private static class QueuePlayer implements TicTacToePlayer {
+
+		private final Deque<Integer> moves;
+
+		QueuePlayer(int... moves) {
+			this.moves = new ArrayDeque<>();
+			for (var move : moves) {
+				this.moves.add(move);
+			}
+		}
+
+		@Override
+		public int play(Stone[] board, Stone colorToPlay) {
+			return moves.poll();
+		}
 	}
 }
