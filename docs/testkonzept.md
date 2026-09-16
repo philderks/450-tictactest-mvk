@@ -63,3 +63,20 @@ Solange `HumanPlayer` keine eigene Logik ausser reinem Input-Parsing enthält, w
 2. Neue Spieler-Strategie → Unit-Test für deren `play(...)`-Verhalten isoliert.
 3. Änderungen am Spielablauf (`play()`) → Integrationstest, der das Zusammenspiel mehrerer Spieler prüft.
 4. Dokumentation in [docs/tests.md](tests.md) nach Given-When-Then nachführen.
+
+## Audit-Feedback
+
+**Gesamtbild:** Das Testkonzept ist für ein kleines Projekt gut gemacht. Die wichtigste Logik (wer gewinnt, wie ein Spiel abläuft) wird automatisch mit JUnit 5 und AssertJ getestet, und die Tests laufen bei jedem Pull Request von selbst. Es ist klar geschrieben, und der Autor sagt ehrlich, was noch fehlt. Schwach sind die Fehlerfälle, und es fehlt eine Angabe, wie viel vom Code getestet ist.
+
+**Bewertung:** Solide und verständlich, aber nicht vollständig. Für eine 5.5 oder 6 müssten die bekannten Lücken geschlossen und die Testabdeckung gemessen werden.
+
+**Verbesserungsvorschläge:**
+- Den Widerspruch korrigieren: Im Text steht „zwei Stufen“, es werden aber drei beschrieben.
+- Test für ein Unentschieden im ganzen Spiel ergänzen.
+- Test für ungültige oder schon belegte Felder ergänzen.
+- Die Testabdeckung messen (z.B. mit JaCoCo) und ein Ziel festlegen.
+- Die Tests auch auf dem dev-Branch automatisch laufen lassen.
+- Randfälle testen, z.B. ein leeres Brett oder ungültige Eingaben.
+- Eine kurze Checkliste für den manuellen Test des HumanPlayer schreiben.
+
+*Auditor: Nik*
