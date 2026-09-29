@@ -11,22 +11,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: read
       pull-requests: write
+
+    container:
+      image: ghcr.io/philderks/tictactest-devcontainer:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 25
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
 
       - name: Stash coverage script
         # main may not contain the script yet, so keep a copy outside the working tree
@@ -35,7 +34,6 @@ jobs:
       - name: Measure coverage of this branch
         id: branch
         run: |
-          chmod +x ./gradlew
           ./gradlew test jacocoTestReport
           echo "coverage=$(bash "$RUNNER_TEMP/coverage-percent.sh")" >> "$GITHUB_OUTPUT"
 
@@ -44,7 +42,6 @@ jobs:
         run: |
           git checkout --force origin/main
           rm -rf build
-          chmod +x ./gradlew
           ./gradlew test jacocoTestReport
           echo "coverage=$(bash "$RUNNER_TEMP/coverage-percent.sh")" >> "$GITHUB_OUTPUT"
 

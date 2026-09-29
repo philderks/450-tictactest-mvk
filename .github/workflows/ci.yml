@@ -9,22 +9,24 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    # Image-Tag wird vom Workflow "DevContainer" per Auto-PR aktualisiert
+    # (bis zum ersten Release: latest). JDK und Gradle kommen aus dem Image, deshalb kein
+    # setup-java. `--user root`, weil der Runner das Workspace-Verzeichnis mit
+    # seiner eigenen UID anlegt.
+    container:
+      image: ghcr.io/philderks/tictactest-devcontainer:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 25
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
 
       - name: Test and coverage report
         run: ./gradlew test jacocoTestReport
