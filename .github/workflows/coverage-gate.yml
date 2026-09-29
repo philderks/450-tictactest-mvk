@@ -15,7 +15,7 @@ jobs:
       pull-requests: write
 
     container:
-      image: ghcr.io/philderks/tictactest-devcontainer:latest
+      image: ghcr.io/philderks/tictactest-devcontainer:sha-aa41b820649c
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
