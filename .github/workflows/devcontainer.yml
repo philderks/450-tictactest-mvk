@@ -1,0 +1,77 @@
+name: DevContainer
+
+# Versionierung: Image-Tag = Git-Commit-Hash (sha-<12>).
+# Freigabe: Nur Pushes auf main landen in der Registry. Ein PR baut das Image
+# zwar (damit Fehler auffallen), pusht es aber nicht - ein nicht freigegebenes
+# Image existiert in der Registry also gar nicht erst.
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ '.devcontainer/Dockerfile' ]
+  pull_request:
+    paths: [ '.devcontainer/Dockerfile' ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      pull-requests: write
+
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/tictactest-devcontainer
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: tag
+        run: echo "tag=sha-${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build (Push nur auf main)
+        uses: docker/build-push-action@v6
+        with:
+          context: .devcontainer
+          push: ${{ github.ref == 'refs/heads/main' }}
+          load: ${{ github.ref != 'refs/heads/main' }}
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.tag.outputs.tag }}
+            ${{ env.IMAGE }}:latest
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Smoke test
+        run: |
+          docker run --rm "${IMAGE}:${{ steps.tag.outputs.tag }}" sh -c '
+            java -version && gradle --version && test "$(id -u):$(id -g)" = 1000:1000'
+
+      # Trägt die neue Version in devcontainer.json und alle CI-Workflows ein.
+      # Der Merge dieses PR ist die zweite Freigabestufe: erst danach nutzen
+      # die lokale Umgebung und die CI das neue Image.
+      - name: Version eintragen
+        if: github.ref == 'refs/heads/main'
+        run: |
+          files=$(grep -l "$IMAGE:" .devcontainer/devcontainer.json .github/workflows/*.yml)
+          sed -i "s#$IMAGE:[^\"[:space:]]*#$IMAGE:${{ steps.tag.outputs.tag }}#" $files
+          git diff --stat
+
+      # GITHUB_TOKEN darf keine Dateien unter .github/workflows ändern und
+      # löst auf dem PR keine CI aus, deshalb ein PAT mit Workflow-Recht.
+      - name: Pull Request öffnen
+        if: github.ref == 'refs/heads/main'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.DEVCONTAINER_PR_TOKEN }}
+          branch: chore/devcontainer
+          title: "chore(devcontainer): auf ${{ steps.tag.outputs.tag }} aktualisieren"
+          commit-message: "chore(devcontainer): auf ${{ steps.tag.outputs.tag }} aktualisieren"
+          body: |
+            Automatisch erstellt, nachdem `${{ env.IMAGE }}:${{ steps.tag.outputs.tag }}`
+            aus Commit ${{ github.sha }} gebaut und freigegeben wurde.

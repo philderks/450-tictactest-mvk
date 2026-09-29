@@ -1,8 +1,13 @@
 {
-	"name": "tictactoe-java",
-	"build": {
-		"dockerfile": "Dockerfile"
-	},
+	"name": "TicTacTest",
+
+	// Version = Git-Commit-Hash. Wird zusammen mit den CI-Workflows automatisch per
+	// Pull Request aktualisiert, sobald ein neues Image aus main gebaut wurde - nicht von Hand ändern.
+	// Bis zum ersten Release steht hier "latest" (siehe docs/devcontainer.md).
+	"image": "ghcr.io/philderks/tictactest-devcontainer:latest",
+
+	"remoteUser": "vscode",
+
 	"customizations": {
 		"vscode": {
 			"extensions": [
@@ -10,7 +15,5 @@
 				"vscjava.vscode-gradle"
 			]
 		}
-	},
-	"postCreateCommand": "chmod +x ./gradlew && ./gradlew --version",
-	"remoteUser": "vscode"
+	}
 }
