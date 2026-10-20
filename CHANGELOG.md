@@ -6,6 +6,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionsnu
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-20
+
+### Fixed
+- Das Spiel stürzt nicht mehr ab, wenn mehrere Züge auf einmal eingegeben werden (z. B. per Pipe: `printf '4\n8\n2\n6\n' | java -jar tictactest-1.0.1.jar`). Vorher ging nach dem ersten Zug die restliche Eingabe verloren.
+
 ## [1.0.0] - 2026-10-20
 
 ### Added
