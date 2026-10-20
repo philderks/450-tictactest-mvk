@@ -1,7 +1,9 @@
 name: CI
 
 on:
+  # nur Branches - Release-Tags (v*) laufen über release.yml
   push:
+    branches: [ '**' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
