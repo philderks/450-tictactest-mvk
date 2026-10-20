@@ -28,10 +28,19 @@ sind in [docs/devcontainer.md](docs/devcontainer.md) beschrieben.
 
 Alternativ mit [GitHub Codespaces](https://github.com/features/codespaces) direkt im Browser starten: **Code → Create codespace on main**.
 
+## Spielen
+
+Das fertige JAR der neuesten Version liegt unter [Releases](https://github.com/philderks/450-tictactest-mvk/releases/latest):
+
+```bash
+java -jar tictactest-<version>.jar
+```
+
 ## Build
 
 ```bash
 ./gradlew build
+java -jar build/libs/tictactest-<version>.jar
 ```
 
 ## Tests
@@ -47,3 +56,7 @@ Die Tests sind nach dem Given-When-Then-Muster in [docs/tests.md](docs/tests.md)
 Bei jedem Push/Pull-Request auf `main` führt die GitHub-Actions-Pipeline ([.github/workflows/ci.yml](.github/workflows/ci.yml)) automatisch Tests, Coverage-Prüfung und Build aus – im selben DevContainer-Image wie lokal. Ein Pull Request wird zusätzlich vom [Coverage Gate](.github/workflows/coverage-gate.yml) gegen `main` geprüft.
 
 Der DevContainer selbst wird über den Git-Commit-Hash versioniert, mit dem Merge nach `main` freigegeben und per automatischem Pull Request ausgerollt – siehe [docs/devcontainer.md](docs/devcontainer.md).
+
+## Release
+
+Ein Release entsteht nur durch einen bewusst gesetzten Tag `vX.Y.Z` auf `main`. Der Workflow [release.yml](.github/workflows/release.yml) testet, baut und veröffentlicht dann das JAR als GitHub Release. Ablauf, Versionierungsregeln und Voraussetzungen: [RELEASE.md](RELEASE.md). Änderungen pro Version: [CHANGELOG.md](CHANGELOG.md).

@@ -1,0 +1,97 @@
+name: Release
+
+# Nur ein Release-Tag startet einen Release, ein normaler Push auf main nicht.
+# workflow_dispatch: manuell über "Run workflow" - dort unter "Use workflow from" den Tag wählen.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      - name: Check release conditions
+        id: version
+        run: |
+          version=$(./gradlew properties -q | awk '/^version:/ { print $2 }')
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME passt nicht zu version = '$version' in build.gradle"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Commit $GITHUB_SHA ist nicht auf main"
+            exit 1
+          fi
+          awk -v v="[$version]" '/^## / { p = index($0, v) > 0; next } p' CHANGELOG.md > changes.md
+          if ! grep -q '[^[:space:]]' changes.md; then
+            echo "::error::CHANGELOG.md enthält keinen Abschnitt für [$version]"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests
+        run: ./gradlew test
+
+      - name: Build JAR (incl. coverage check)
+        run: ./gradlew build
+
+      - name: Smoke test JAR
+        env:
+          JAR: build/libs/tictactest-${{ steps.version.outputs.version }}.jar
+        run: |
+          # ohne Eingabe muss das Spiel starten und nach dem ersten Zug fragen
+          java -jar "$JAR" < /dev/null 2>&1 | tee smoke.log || true
+          grep -q '(0-8)' smoke.log
+
+      - name: Create SHA-256 checksum
+        working-directory: build/libs
+        run: sha256sum "tictactest-${{ steps.version.outputs.version }}.jar" > "tictactest-${{ steps.version.outputs.version }}.jar.sha256"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          {
+            echo "**Tag:** \`$GITHUB_REF_NAME\`"
+            echo "**Commit:** $GITHUB_SHA"
+            echo "**Artefakt:** \`tictactest-$VERSION.jar\` (Prüfsumme in \`tictactest-$VERSION.jar.sha256\`)"
+            echo
+            echo "## Änderungen"
+            cat changes.md
+            echo
+            echo "## Starten"
+            echo
+            echo "Benötigt Java 25:"
+            echo
+            echo '```bash'
+            echo "java -jar tictactest-$VERSION.jar"
+            echo '```'
+          } > notes.md
+
+          gh release create "$GITHUB_REF_NAME" \
+            "build/libs/tictactest-$VERSION.jar" \
+            "build/libs/tictactest-$VERSION.jar.sha256" \
+            --title "TicTacTest $GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            --verify-tag
+
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"
