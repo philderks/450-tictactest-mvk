@@ -4,7 +4,7 @@ plugins {
 }
 
 // Einzige Quelle der Versionsnummer (siehe RELEASE.md). Der Release-Tag muss "v" + version sein.
-version = '1.0.0'
+version = '1.0.1'
 
 java {
 	toolchain {

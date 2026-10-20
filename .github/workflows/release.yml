@@ -17,12 +17,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Install Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '25'
@@ -57,9 +57,9 @@ jobs:
         env:
           JAR: build/libs/tictactest-${{ steps.version.outputs.version }}.jar
         run: |
-          # ohne Eingabe muss das Spiel starten und nach dem ersten Zug fragen
-          java -jar "$JAR" < /dev/null 2>&1 | tee smoke.log || true
-          grep -q '(0-8)' smoke.log
+          # ganzes Spiel per Pipe: X gewinnt gegen den GreedyPlayer auf der Diagonale 2-4-6
+          printf '4\n8\n2\n6\n' | java -jar "$JAR" | tee smoke.log
+          grep -q 'winner is: CROSS' smoke.log
 
       - name: Create SHA-256 checksum
         working-directory: build/libs

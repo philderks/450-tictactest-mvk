@@ -132,7 +132,7 @@ Unter **Actions → Release** läuft jetzt der Workflow. Wenn er grün ist, ersc
 3. **Bedingungen prüfen** – Tag = `v` + Version aus `build.gradle`, Commit liegt auf `main`, Changelog-Abschnitt existiert.
 4. **Tests ausführen** – `./gradlew test`.
 5. **Bauen und JAR erzeugen** – `./gradlew build` (inkl. Coverage-Prüfung) erzeugt `build/libs/tictactest-X.Y.Z.jar`.
-6. **Smoke-Test** – startet das JAR und prüft, dass das Spiel nach dem ersten Zug fragt.
+6. **Smoke-Test** – spielt mit dem JAR ein ganzes Spiel (Züge per Pipe) und prüft, dass es mit einem Gewinner endet.
 7. **Prüfsumme** – erzeugt `tictactest-X.Y.Z.jar.sha256`.
 8. **GitHub Release erstellen** – Titel `TicTacTest vX.Y.Z`. Der Text enthält Tag, Commit-ID, den Changelog-Abschnitt der Version und den Startbefehl. JAR und Prüfsumme werden angehängt.
 
