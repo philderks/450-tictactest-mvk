@@ -79,6 +79,14 @@ jobs:
           ref: gh-pages
           path: gh-pages
 
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install matplotlib
+        run: pip install matplotlib
+
       - name: Assemble site with updated history
         run: |
           mkdir -p site/data
@@ -91,8 +99,11 @@ jobs:
           coverage=$(bash .github/scripts/coverage-percent.sh coverage-report)
           echo "$(date -u +%Y-%m-%d),${GITHUB_SHA:0:7},$coverage" >> site/data/coverage.csv
 
-          cp .github/pages/index.html site/index.html
-          cp -r coverage-report/html site/coverage
+          # Startseite ist der JaCoCo-Report, mit dem Verlaufsdiagramm über der Tabelle
+          cp -r coverage-report/html/. site/
+          python .github/scripts/coverage-chart.py site/data/coverage.csv site/coverage-chart.png
+          sed -i 's|</div><h1>|</div><h2>Coverage-Verlauf</h2><img src="coverage-chart.png" alt="Coverage-Verlauf" style="max-width: 100%"><hr><h1>|' site/index.html
+          grep -q coverage-chart.png site/index.html
 
           echo "Coverage auf main: **$coverage %**" >> "$GITHUB_STEP_SUMMARY"
 
