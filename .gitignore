@@ -2,6 +2,7 @@
 !.git*
 
 build/
+.jqwik-database
 !**/src/main/**/build/
 !**/src/test/**/build/
 
