@@ -1,6 +1,7 @@
 plugins {
 	id 'java'
 	id 'jacoco'
+	id 'info.solidsoft.pitest' version '1.19.0'
 }
 
 // Einzige Quelle der Versionsnummer (siehe RELEASE.md). Der Release-Tag muss "v" + version sein.
@@ -42,6 +43,15 @@ test {
 
 jacoco {
 	toolVersion = "0.8.14"
+}
+
+pitest {
+	targetClasses = ['ch.bbw.m450.tictactoe.*']
+	pitestVersion = '1.30.1'
+	junit5PluginVersion = '1.2.3'
+	threads = 2
+	outputFormats = ['XML', 'HTML']
+	timestampedReports = false
 }
 
 jacocoTestReport {

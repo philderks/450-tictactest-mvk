@@ -43,6 +43,16 @@ jobs:
       - name: Verify coverage (min. 90%)
         run: ./gradlew jacocoTestCoverageVerification
 
+      - name: Mutation testing
+        run: ./gradlew pitest
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pitest-mutation-report
+          path: build/reports/pitest
+
       - name: Build
         run: ./gradlew build
 
