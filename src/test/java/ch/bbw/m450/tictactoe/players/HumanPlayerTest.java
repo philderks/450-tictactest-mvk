@@ -36,9 +36,9 @@ class HumanPlayerTest {
 		assertThat(player.play(board, Stone.CIRCLE)).isEqualTo(8);
 
 		assertThat(out.capturedLines())
-				.filteredOn(line -> line.contains("where to to put the next"))
+				.filteredOn(line -> line.contains("where to put the next"))
 				.containsExactly(
-						"where to to put the next CROSS? (0-8): ",
-						"where to to put the next CIRCLE? (0-8): ");
+						"where to put the next CROSS? (0-8): ",
+						"where to put the next CIRCLE? (0-8): ");
 	}
 }

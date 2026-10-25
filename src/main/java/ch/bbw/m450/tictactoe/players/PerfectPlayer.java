@@ -1,10 +1,11 @@
 package ch.bbw.m450.tictactoe.players;
 
-import ch.bbw.m450.tictactoe.TicTacToeMain;
-import ch.bbw.m450.tictactoe.TicTacToePlayer;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+
+import ch.bbw.m450.tictactoe.TicTacToeMain;
+import ch.bbw.m450.tictactoe.TicTacToePlayer;
 
 /** Chooses a move with the best possible outcome against an optimal opponent. */
 public class PerfectPlayer implements TicTacToePlayer {

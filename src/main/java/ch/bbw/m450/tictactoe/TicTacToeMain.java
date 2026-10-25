@@ -40,7 +40,7 @@ public class TicTacToeMain {
 		for (var i = 0; i < 3; i++) {
 			for (var j = 0; j < 3; j++) {
 				var index = i * 3 + j;
-				String color = board[index] == Stone.CROSS ? "X" : "O";
+				var color = board[index] == Stone.CROSS ? "X" : "O";
 				color = "\033[1m" + color + "\033[0m";
 				color = board[index] == null ? "\033[37m" + index + "\033[0m" : color;
 				sb.append(color)
@@ -66,7 +66,7 @@ public class TicTacToeMain {
 		//     3 | 4 | 5
 		//    ---+---+---
 		//     6 | 7 | 8
-		if(xPlayer == oPlayer) {
+		if (xPlayer == oPlayer) {
 			throw new IllegalArgumentException("players must differ");
 		}
 		var board = new Stone[BOARD_SIZE]; // all null -> empty

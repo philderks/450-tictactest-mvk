@@ -33,6 +33,15 @@ jobs:
       - name: Test and coverage report
         run: ./gradlew test jacocoTestReport
 
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-test-report
+          path: |
+            build/reports/tests/test
+            build/test-results/test
+
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4
