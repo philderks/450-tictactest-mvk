@@ -8,6 +8,8 @@ import java.nio.charset.StandardCharsets;
 import ch.bbw.m450.tictactoe.TicTacToeMain;
 import ch.bbw.m450.tictactoe.TicTacToePlayer.Stone;
 import org.junit.jupiter.api.Test;
+import org.junitpioneer.jupiter.StdIo;
+import org.junitpioneer.jupiter.StdOut;
 
 class HumanPlayerTest {
 
@@ -22,5 +24,21 @@ class HumanPlayerTest {
 
 		assertThat(first).as("first move").isEqualTo(4);
 		assertThat(second).as("second move").isEqualTo(8);
+	}
+
+	@Test
+	@StdIo({"4", "8"})
+	void play_readsStdIn_andPrintsPromptForEachMove(StdOut out) {
+		var player = new HumanPlayer();
+		var board = new Stone[TicTacToeMain.BOARD_SIZE];
+
+		assertThat(player.play(board, Stone.CROSS)).isEqualTo(4);
+		assertThat(player.play(board, Stone.CIRCLE)).isEqualTo(8);
+
+		assertThat(out.capturedLines())
+				.filteredOn(line -> line.contains("where to to put the next"))
+				.containsExactly(
+						"where to to put the next CROSS? (0-8): ",
+						"where to to put the next CIRCLE? (0-8): ");
 	}
 }
