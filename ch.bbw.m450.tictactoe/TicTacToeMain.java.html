@@ -40,7 +40,7 @@ import ch.bbw.m450.tictactoe.players.HumanPlayer;
 <span class="fc bfc" id="L40" title="All 2 branches covered.">		for (var i = 0; i &lt; 3; i++) {</span>
 <span class="fc bfc" id="L41" title="All 2 branches covered.">			for (var j = 0; j &lt; 3; j++) {</span>
 <span class="fc" id="L42">				var index = i * 3 + j;</span>
-<span class="fc bfc" id="L43" title="All 2 branches covered.">				String color = board[index] == Stone.CROSS ? &quot;X&quot; : &quot;O&quot;;</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">				var color = board[index] == Stone.CROSS ? &quot;X&quot; : &quot;O&quot;;</span>
 <span class="fc" id="L44">				color = &quot;\033[1m&quot; + color + &quot;\033[0m&quot;;</span>
 <span class="fc bfc" id="L45" title="All 2 branches covered.">				color = board[index] == null ? &quot;\033[37m&quot; + index + &quot;\033[0m&quot; : color;</span>
 <span class="fc" id="L46">				sb.append(color)</span>
@@ -66,7 +66,7 @@ import ch.bbw.m450.tictactoe.players.HumanPlayer;
 		//     3 | 4 | 5
 		//    ---+---+---
 		//     6 | 7 | 8
-<span class="fc bfc" id="L69" title="All 2 branches covered.">		if(xPlayer == oPlayer) {</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">		if (xPlayer == oPlayer) {</span>
 <span class="fc" id="L70">			throw new IllegalArgumentException(&quot;players must differ&quot;);</span>
 		}
 <span class="fc" id="L72">		var board = new Stone[BOARD_SIZE]; // all null -&gt; empty</span>
@@ -92,4 +92,4 @@ import ch.bbw.m450.tictactoe.players.HumanPlayer;
 	}
 
 }
-</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
