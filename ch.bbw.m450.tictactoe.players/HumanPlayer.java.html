@@ -25,8 +25,18 @@ public class HumanPlayer implements TicTacToePlayer {
 
 	@Override
 	public int play(Stone[] board, Stone colorToPlay) {
-<span class="fc" id="L28">		System.out.println(TicTacToeMain.toString(board) + &quot;where to put the next &quot; + colorToPlay + &quot;? (0-8): &quot;);</span>
-<span class="fc" id="L29">		return Integer.parseInt(scanner.nextLine());</span>
+		while (true) {
+<span class="fc" id="L29">			System.out.println(TicTacToeMain.toString(board) + &quot;where to put the next &quot; + colorToPlay + &quot;? (0-8): &quot;);</span>
+			try {
+<span class="fc" id="L31">				var position = Integer.parseInt(scanner.nextLine());</span>
+<span class="pc bpc" id="L32" title="3 of 6 branches missed.">				if (position &gt;= 0 &amp;&amp; position &lt; board.length &amp;&amp; board[position] == null) {</span>
+<span class="fc" id="L33">					return position;</span>
+				}
+<span class="nc" id="L35">				System.out.println(&quot;Choose a free field from 0 to 8.&quot;);</span>
+<span class="nc" id="L36">			} catch (NumberFormatException e) {</span>
+<span class="nc" id="L37">				System.out.println(&quot;Invalid input. Enter a number from 0 to 8.&quot;);</span>
+<span class="nc" id="L38">			}</span>
+		}
 	}
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
