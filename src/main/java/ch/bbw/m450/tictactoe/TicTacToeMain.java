@@ -1,6 +1,7 @@
 package ch.bbw.m450.tictactoe;
 
 import java.util.Arrays;
+import java.util.NoSuchElementException;
 
 import ch.bbw.m450.tictactoe.TicTacToePlayer.Stone;
 import ch.bbw.m450.tictactoe.players.GreedyPlayer;
@@ -14,7 +15,11 @@ public class TicTacToeMain {
 	public static final int BOARD_SIZE = 9;
 
 	public static void main(String[] args) {
-		play(new HumanPlayer(), new GreedyPlayer());
+		try {
+			play(new HumanPlayer(), new GreedyPlayer());
+		} catch (NoSuchElementException e) {
+			System.out.println("Input ended. Game stopped.");
+		}
 	}
 
 	/**

@@ -6,6 +6,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionsnu
 
 ## [Unreleased]
 
+### Added
+- Separate End-to-End-Tests für vollständige Konsolenspiele, fehlerhafte Eingaben und Eingabeende mit Timeout-Absicherung; Gradle-Task und CI-Report.
+
+### Fixed
+- Ungültige oder belegte Felder und nichtnumerische Eingaben lassen sich erneut eingeben statt das Spiel abstürzen zu lassen.
+- Bei Eingabeende stoppt das Konsolenspiel mit einer verständlichen Meldung statt einem Stacktrace.
+
 ## [1.0.1] - 2026-10-20
 
 ### Fixed

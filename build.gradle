@@ -26,6 +26,28 @@ dependencies {
 	testImplementation 'net.jqwik:jqwik:1.10.2'
 }
 
+sourceSets {
+	e2eTest {
+		java.srcDir 'src/e2eTest/java'
+		compileClasspath += sourceSets.main.output
+		runtimeClasspath += sourceSets.main.output
+	}
+}
+
+configurations {
+	e2eTestImplementation.extendsFrom testImplementation
+	e2eTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+
+tasks.register('e2eTest', Test) {
+	description = 'Runs complete console games and adversarial input tests.'
+	group = 'verification'
+	testClassesDirs = sourceSets.e2eTest.output.classesDirs
+	classpath = sourceSets.e2eTest.runtimeClasspath
+	useJUnitPlatform()
+	shouldRunAfter test
+}
+
 jar {
 	manifest {
 		attributes(
@@ -75,4 +97,4 @@ jacocoTestCoverageVerification {
 	}
 }
 
-check.dependsOn jacocoTestCoverageVerification
+check.dependsOn jacocoTestCoverageVerification, e2eTest

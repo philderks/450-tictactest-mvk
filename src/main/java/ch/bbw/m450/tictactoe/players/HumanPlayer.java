@@ -25,7 +25,17 @@ public class HumanPlayer implements TicTacToePlayer {
 
 	@Override
 	public int play(Stone[] board, Stone colorToPlay) {
-		System.out.println(TicTacToeMain.toString(board) + "where to put the next " + colorToPlay + "? (0-8): ");
-		return Integer.parseInt(scanner.nextLine());
+		while (true) {
+			System.out.println(TicTacToeMain.toString(board) + "where to put the next " + colorToPlay + "? (0-8): ");
+			try {
+				var position = Integer.parseInt(scanner.nextLine());
+				if (position >= 0 && position < board.length && board[position] == null) {
+					return position;
+				}
+				System.out.println("Choose a free field from 0 to 8.");
+			} catch (NumberFormatException e) {
+				System.out.println("Invalid input. Enter a number from 0 to 8.");
+			}
+		}
 	}
 }
