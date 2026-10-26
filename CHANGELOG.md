@@ -13,6 +13,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionsnu
 - Ungültige oder belegte Felder und nichtnumerische Eingaben lassen sich erneut eingeben statt das Spiel abstürzen zu lassen.
 - Bei Eingabeende stoppt das Konsolenspiel mit einer verständlichen Meldung statt einem Stacktrace.
 
+### Changed
+- Das Pages-Diagramm verwendet eine neue Branch-Coverage-Historie für die 90-%-Gate-Linie; die bisherige Instruction-Historie bleibt getrennt erhalten.
+- JaCoCo wurde auf 0.8.16 aktualisiert.
+
 ## [1.0.1] - 2026-10-20
 
 ### Fixed

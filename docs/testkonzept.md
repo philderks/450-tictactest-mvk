@@ -18,7 +18,7 @@ Die Kernlogik des Spiels (Gewinnerkennung und Spielablauf) soll zuverlässig dur
 
 - **JUnit Jupiter 6.1.3** als Test-Framework, inkl. `@ParameterizedTest`/`@MethodSource`; **AssertJ 3.27.7** für Assertions.
 - **JUnit Pioneer 2.3.0** für `@StdIo` und **jqwik 1.10.2** für Property-Tests.
-- **JaCoCo 0.8.15** erzeugt HTML/XML/CSV und erzwingt bei `check` mindestens 90 % Branch Coverage der regulären `test`-Suite; **PIT 1.30.1** erstellt einen Mutationsbericht ohne Mindestwert.
+- **JaCoCo 0.8.16** erzeugt HTML/XML/CSV und erzwingt bei `check` mindestens 90 % Branch Coverage der regulären `test`-Suite; **PIT 1.30.1** erstellt einen Mutationsbericht ohne Mindestwert.
 - Ausführung mit dem Gradle-Wrapper und **Java 25**: `./gradlew test` für Unit-/Integrationstests (inkl. jqwik); `./gradlew e2eTest` für Konsolen-E2E-Tests; `./gradlew check` führt beide und das JaCoCo-Gate aus; `./gradlew pitest` läuft separat. Die E2E-Source-Set-Tests erhöhen nicht automatisch die JaCoCo-/PIT-Messwerte der regulären Suite.
 
 ## Aufbau / Teststufen
@@ -70,7 +70,7 @@ Abgedeckt sind auch ein Unentschieden (`play()` liefert `null`) und ein fehlerha
 
 - Der JaCoCo-Gate prüft Branches **nur** der regulären Tests; die eigene E2E-Suite wird separat ausgeführt. PIT hat kein Mindestziel; der aktuelle Wert liegt unter 90 %. Ausgabepfade und Grenzfälle können trotz grüner Tests überlebende Mutanten enthalten.
 - Die Tests simulieren Konsoleneingaben und decken endliche fehlerhafte Folgen und EOF ab, aber keinen unbegrenzt weiterlaufenden Eingabestrom, extrem lange Eingabezeilen, Betriebssystem-/Terminalverhalten oder jede mögliche DoS-Variante. Timeout schützt die Testausführung, nicht alle realen Anwendungen.
-- SonarLint und die Aktualität aller Abhängigkeiten sind nicht als erfüllt nachgewiesen. Der GitHub-Ruleset erzwingt derzeit keine erfolgreichen CI-Checks vor dem Merge und erlaubt einen Rollen-Bypass; die Testpipeline ist deshalb kein garantierter Schutz für `main`. Näheres in [ist-situation.md](ist-situation.md).
+- SonarLint wurde nicht ausgeführt; es gibt weder einen konfigurierten Scanner noch einen Analysebericht, daher sind null Warnungen nicht nachgewiesen. Die stabilen Versionen der in `build.gradle` deklarierten Test-/Coverage-/Mutationstools wurden am 26.10.2026 gegen Maven Central bzw. das Gradle Plugin Portal geprüft und JaCoCo auf 0.8.16 angehoben; zukünftige Releases sind dadurch nicht automatisch abgedeckt. Der GitHub-Ruleset erzwingt derzeit keine erfolgreichen CI-Checks vor dem Merge und erlaubt einen Rollen-Bypass; die Testpipeline ist deshalb kein garantierter Schutz für `main`. Näheres in [ist-situation.md](ist-situation.md).
 
 ## Namenskonvention & Dokumentation
 
