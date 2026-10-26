@@ -1,5 +1,6 @@
 package ch.bbw.m450.tictactoe.players;
 
+import static ch.bbw.m450.tictactoe.BoardFixtures.toBoard;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -14,22 +15,14 @@ class PerfectPlayerTest {
 
 	@Test
 	void playsImmediateWin() {
-		var board = new Stone[]{
-				Stone.CROSS, Stone.CROSS, null,
-				Stone.CIRCLE, Stone.CIRCLE, null,
-				null, null, null
-		};
+		var board = toBoard("XX.OO....");
 
 		assertThat(new PerfectPlayer().play(board, Stone.CROSS)).isEqualTo(2);
 	}
 
 	@Test
 	void blocksImmediateLoss() {
-		var board = new Stone[]{
-				Stone.CIRCLE, Stone.CIRCLE, null,
-				Stone.CROSS, null, null,
-				Stone.CROSS, null, null
-		};
+		var board = toBoard("OO.X..X..");
 
 		assertThat(new PerfectPlayer().play(board, Stone.CROSS)).isEqualTo(2);
 	}
@@ -47,11 +40,7 @@ class PerfectPlayerTest {
 
 	@Test
 	void cannotPlayOnFullBoard() {
-		var board = new Stone[]{
-				Stone.CROSS, Stone.CIRCLE, Stone.CROSS,
-				Stone.CROSS, Stone.CIRCLE, Stone.CIRCLE,
-				Stone.CIRCLE, Stone.CROSS, Stone.CROSS
-		};
+		var board = toBoard("XOXXOOOXX");
 
 		assertThatThrownBy(() -> new PerfectPlayer().play(board, Stone.CROSS))
 				.isInstanceOf(IllegalStateException.class);
@@ -76,9 +65,11 @@ class PerfectPlayerTest {
 			for (var move = 0; move < board.length; move++) {
 				if (board[move] == null) {
 					board[move] = turn;
-					assertThat(TicTacToeMain.isWin(board, turn))
+					assertThat(Arrays.stream(Stone.values())
+							.filter(color -> TicTacToeMain.isWin(board, color))
+							.toList())
 							.as("opponent must never win with move %s on %s", move, Arrays.toString(board))
-							.isFalse();
+							.doesNotContain(turn);
 					assertNeverLoses(board, perfectColor, perfectColor);
 					board[move] = null;
 				}

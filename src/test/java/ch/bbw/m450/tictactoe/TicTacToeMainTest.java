@@ -1,11 +1,13 @@
 package ch.bbw.m450.tictactoe;
 
+import static ch.bbw.m450.tictactoe.BoardFixtures.toBoard;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ch.bbw.m450.tictactoe.TicTacToePlayer.Stone;
 import ch.bbw.m450.tictactoe.players.GreedyPlayer;
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.Deque;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -15,40 +17,13 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 class TicTacToeMainTest {
 
-	// fixtures: named boards reused across the tests below
-	private static final Stone[] ROW_WIN_CROSS = {
-			Stone.CROSS, Stone.CROSS, Stone.CROSS,
-			null, Stone.CIRCLE, null,
-			Stone.CIRCLE, null, null
-	};
-
-	private static final Stone[] DIAGONAL_WIN_CROSS = {
-			Stone.CIRCLE, null, Stone.CROSS,
-			null, Stone.CROSS, null,
-			Stone.CROSS, null, Stone.CIRCLE
-	};
-
-	private static final Stone[] FULL_BOARD_NO_WINNER = {
-			Stone.CROSS, Stone.CIRCLE, Stone.CROSS,
-			Stone.CROSS, Stone.CIRCLE, Stone.CIRCLE,
-			Stone.CIRCLE, Stone.CROSS, Stone.CROSS
-	};
-
 	@Test
-	void isWin_detectsRowWin() {
-		assertThat(TicTacToeMain.isWin(ROW_WIN_CROSS, Stone.CROSS)).isTrue();
-		assertThat(TicTacToeMain.isWin(ROW_WIN_CROSS, Stone.CIRCLE)).isFalse();
-	}
+	void isWin_returnsNoWinnerForDrawBoard() {
+		var board = toBoard("XOXXOOOXX");
 
-	@Test
-	void isWin_detectsDiagonalWin() {
-		assertThat(TicTacToeMain.isWin(DIAGONAL_WIN_CROSS, Stone.CROSS)).isTrue();
-	}
-
-	@Test
-	void isWin_returnsFalseForNonWinningBoard() {
-		assertThat(TicTacToeMain.isWin(FULL_BOARD_NO_WINNER, Stone.CROSS)).isFalse();
-		assertThat(TicTacToeMain.isWin(FULL_BOARD_NO_WINNER, Stone.CIRCLE)).isFalse();
+		assertThat(Arrays.stream(Stone.values())
+				.filter(color -> TicTacToeMain.isWin(board, color))
+				.toList()).isEmpty();
 	}
 
 	@ParameterizedTest(name = "positions {0} won by {1}")
@@ -59,7 +34,10 @@ class TicTacToeMainTest {
 			board[position] = color;
 		}
 
-		assertThat(TicTacToeMain.isWin(board, color)).isTrue();
+		assertThat(Arrays.stream(Stone.values())
+				.filter(candidate -> TicTacToeMain.isWin(board, candidate))
+				.toList()).as("winner for line %s", Arrays.toString(positions))
+				.containsExactly(color);
 	}
 
 	private static Stream<Arguments> winningLines() {

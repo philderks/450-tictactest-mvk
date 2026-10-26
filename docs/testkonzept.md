@@ -31,7 +31,7 @@ Betrifft `TicTacToeMain.isWin(...)`: eine reine, zustandslose Funktion ohne Seit
 
 - Alle 8 Gewinnlinien (3 Reihen, 3 Spalten, 2 Diagonalen) werden parametrisiert abgedeckt (`isWin_detectsAllWinningLines`).
 - Negativfälle: volles Brett ohne Gewinner (Unentschieden-Board), falsche Farbe gewinnt nicht.
-- Fixtures (benannte, wiederverwendbare Testbretter) statt Boards inline in jeder Methode aufzubauen, für Lesbarkeit.
+- `toBoard(String)` baut und validiert lesbare neunstellige X/O/`.`-Testbretter; die acht Gewinnlinien werden nur einmal über `@MethodSource` geprüft.
 
 ### 2. Unit-Tests für Spieler-Strategien
 
@@ -64,7 +64,7 @@ Abgedeckt sind auch ein Unentschieden (`play()` liefert `null`) und ein fehlerha
 
 **Gefundene Fehler und test-first-Behebung:** Zunächst wurde der Fall E2E-04 geschrieben und **vor der Auslagerung in den eigenen Source-Set** gezielt über `./gradlew test --tests '*TicTacToeE2ETest.invalidTextIsRejectedAndPlayerCanFinishGame'` ausgeführt: **rot** mit `NumberFormatException` in `HumanPlayer.play`. Erst danach wurde das Einlesen so geändert, dass Text zurückgewiesen und nochmals gefragt wird: derselbe Test **grün**. Analog war E2E-05 vor seiner Behebung rot (`IllegalStateException` bei `99`); ein EOF-Reproduktionstest war vor EOF-Behandlung rot (`NoSuchElementException`). Die aktuelle Suite läuft über `./gradlew e2eTest`. Die Spiellogik prüft weiterhin ungültige Züge anderer Spieler und kann dort `IllegalStateException` werfen. Ein unbegrenzt langer *laufender* Eingabestrom ist kein automatischer Abbruchgrund; die Timeout-Tests sichern den Testlauf ab, nicht einen generellen Schutz gegen alle denkbaren DoS-Angriffe.
 
-**Erfolgskriterium:** Alle acht E2E-Tests und `./gradlew check` sind grün; kein Test überschreitet das Timeout. Die E2E-Tests werden separat von den Unit-Tests gezählt. Ein veröffentlichtes Release-JAR ist durch diese Tests nicht nachträglich geändert; beim nächsten Release laufen sie durch `build` mit. Der [CI-Lauf für `fbb7102`](https://github.com/philderks/450-tictactest-mvk/actions/runs/40367789784) hat beide Teststufen, JaCoCo, PIT, Build und Artefakt-Uploads erfolgreich ausgeführt. Lokal wurden 27 reguläre Tests, 8 E2E-Tests, 105/110 abgedeckte Branches (95,45 %) und 71/87 getötete Mutationen (82 %) gemessen. Messwerte sind Momentaufnahmen und nach Änderungen erneut zu prüfen.
+**Erfolgskriterium:** Alle acht E2E-Tests und `./gradlew check` sind grün; kein Test überschreitet das Timeout. Die E2E-Tests werden separat von den Unit-Tests gezählt. Ein veröffentlichtes Release-JAR ist durch diese Tests nicht nachträglich geändert; beim nächsten Release laufen sie durch `build` mit. Der [CI-Lauf für `fbb7102`](https://github.com/philderks/450-tictactest-mvk/actions/runs/40367789784) hat beide Teststufen, JaCoCo, PIT, Build und Artefakt-Uploads erfolgreich ausgeführt. Lokal wurden nach der Testüberarbeitung auf `dev` 28 reguläre Tests, 8 E2E-Tests, 105/110 abgedeckte Branches (95,45 %) und 71/87 getötete Mutationen (82 %) gemessen. Messwerte sind Momentaufnahmen und nach Änderungen erneut zu prüfen.
 
 ## Grenzen und Risiken
 
@@ -74,7 +74,7 @@ Abgedeckt sind auch ein Unentschieden (`play()` liefert `null`) und ein fehlerha
 
 ## Namenskonvention & Dokumentation
 
-- Testmethoden folgen dem Schema `methodeUnterTest_erwartetesVerhalten` (z.B. `isWin_detectsRowWin`).
+- Testmethoden folgen dem Schema `methodeUnterTest_erwartetesVerhalten` (z.B. `isWin_returnsNoWinnerForDrawBoard`).
 - Unit-/Integrationstests werden nach dem **Given-When-Then**-Muster in [docs/tests.md](tests.md) dokumentiert; die E2E-Fälle mit Erwartung und tatsächlichem Verhalten stehen in der Tabelle oben:
   - **Given**: Ausgangszustand
   - **When**: ausgeführte Aktion
