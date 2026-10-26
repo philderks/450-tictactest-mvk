@@ -1,81 +1,33 @@
 # Ist-Situation gegenüber den Anforderungen
 
-Dieses Dokument hält den aktuellen Stand des Projekts (Stand: 2026-09-09) gegen die gestellten Bewertungskriterien fest. Es dient als Ausgangspunkt, um die verbleibenden Lücken gezielt zu schliessen.
+**Stand:** 2026-10-26, Entwicklungsstand auf `dev` nach dem Test-Refactoring (Basis: [`fbb7102`](https://github.com/philderks/450-tictactest-mvk/commit/fbb7102)). Diese Bestandsaufnahme ersetzt die Momentaufnahme vom 09.09.2026. Sie trennt die im Repo belegten Ergebnisse von offenen oder extern zu prüfenden Anforderungen. Testfälle stehen in [tests.md](tests.md), Strategie und E2E-Erwartung/Ist in [testkonzept.md](testkonzept.md).
 
-Legende: ✅ erfüllt · ⚠️ teilweise erfüllt · ❌ fehlt · – nicht code-bezogen
+Legende: ✅ nachweisbar erfüllt · ⚠️ teilweise erfüllt/offen · ❓ nicht verifiziert · – organisatorisch
 
-## Übersicht
-
-| # | Kriterium | Status |
+| # | Kriterium | Stand und Beleg |
 |---|---|---|
-| 1 | Unit Testing mit AssertJ (fluent, keine reinen `isTrue()`), Hilfsstrukturen | ⚠️ teilweise |
-| 2 | ParameterizedTest wo möglich, Vermeidung von Coderepetition | ⚠️ teilweise |
-| 3 | JaCoCo Coverage Reports + Verification (90% Branch Coverage enforced) | ❌ fehlt |
-| 4 | StdIn/StdOut Testing mit JUnit Pioneer | ❌ fehlt |
-| 5 | CI-Pipeline mit allen Reports als Build Artifacts bei jedem Commit, grüner Build | ⚠️ teilweise |
-| 6 | Zusätzlicher, perfekt spielender Player | ❌ fehlt |
-| 7 | Zusätzliches, selbst gewähltes Testframework mit Beispieltest, automatisiert | ❌ fehlt |
-| 8 | Automatisiertes Mutation Testing mit PITest | ❌ fehlt |
-| 9 | Keine SonarLint-Warnings, einheitlicher Codestyle, `var` bevorzugt, aktuellste Library-Versionen | ⚠️ nicht verifiziert |
-| 10 | Pünktliche Abgabe als privates GitHub-Projekt | – |
+| 1 | AssertJ, aussagekräftige Assertions und Hilfsstrukturen | ✅ [`BoardFixtures.toBoard(String)`](../src/test/java/ch/bbw/m450/tictactoe/BoardFixtures.java) erzeugt lesbare Testbretter und validiert sie; [`TicTacToeMainTest`](../src/test/java/ch/bbw/m450/tictactoe/TicTacToeMainTest.java) prüft die exakte Gewinnerfarbe statt bloss eines Wahrheitswertes. Weitere gezielte Ausgabe-Assertions bleiben als Verbesserung möglich. |
+| 2 | Parametrisierte Tests, wenig Duplikation | ✅ Acht Gewinnlinien in einer `@MethodSource` sowie X/O über `@EnumSource` parametrisiert; die überschneidenden separaten Zeilen-/Diagonaltests sind entfernt. |
+| 3 | JaCoCo-Reports und durchgesetzte 90 % **Branch** Coverage | ✅ [`build.gradle`](../build.gradle) erzwingt `counter = 'BRANCH'`, `minimum = 0.90` über `check`; zuletzt **105/110 = 95,45 %**. HTML, XML und CSV werden erzeugt. |
+| 4 | Standard-Ein-/Ausgabe mit JUnit Pioneer | ✅ [`HumanPlayerTest`](../src/test/java/ch/bbw/m450/tictactoe/players/HumanPlayerTest.java) prüft Eingabe/Aufforderungen; acht [`TicTacToeE2ETest`](../src/e2eTest/java/ch/bbw/m450/tictactoe/TicTacToeE2ETest.java)-Fälle spielen ganze Partien über `main()` inkl. Fehler- und EOF-Fällen mit Timeout. |
+| 5 | CI und Test-/Coverage-/Mutationsberichte | ✅ [CI](../.github/workflows/ci.yml) testet Pushes auf Branches und PRs nach `main`; JUnit (Unit + E2E), JaCoCo und PIT werden hochgeladen. [Beispiel eines erfolgreichen CI-Laufs auf `dev`](https://github.com/philderks/450-tictactest-mvk/actions/runs/40376956844). **Aber:** Der GitHub-Ruleset verlangt diese Checks nicht als Merge-Bedingung (siehe unten). |
+| 6 | Perfekt spielender Player | ✅ [`PerfectPlayer`](../src/main/java/ch/bbw/m450/tictactoe/players/PerfectPlayer.java) mit Minimax; Tests prüfen unmittelbare Siege/Blocks, vollständige Gegnerzug-Suche und Unentschieden zweier perfekter Spieler. |
+| 7 | Zusätzliches Testframework mit automatisiertem Beispiel | ✅ jqwik-Property-Test in [`PerfectPlayerPropertyTest`](../src/test/java/ch/bbw/m450/tictactoe/players/PerfectPlayerPropertyTest.java) mit `tries = 100`; als ein JUnit-Testergebnis gezählt. |
+| 8 | Automatisches Mutation Testing | ✅ [PIT](../build.gradle) läuft in CI und erzeugt XML/HTML; zuletzt **71/87 Mutationen getötet (82 %)**. ⚠️ Kein `mutationThreshold`; E2E-Tests im getrennten Source-Set fliessen nicht standardmässig in PIT ein. |
+| 9 | SonarLint-Warnungen, einheitlicher Stil und aktuelle Abhängigkeiten | ⚠️ Die stabilen Versionen aller in [`build.gradle`](../build.gradle) deklarierten Test-/Coverage-/Mutationstools wurden am 26.10.2026 über Maven Central bzw. das Gradle Plugin Portal geprüft; JaCoCo wurde auf 0.8.16 aktualisiert und der Java-25-Build besteht. ❓ Kein SonarLint-/Sonar-Analyseergebnis vorhanden; grüne Tests belegen **nicht** null Warnungen. Einheitsstil nicht durch einen gesonderten Linter nachgewiesen. |
+| 10 | Pünktliche Abgabe / private GitHub-Abgabe | – Abgabefrist nicht aus dem Code verifizierbar. Das Repo ist **öffentlich**; die private-repo-Vorgabe des Handouts ist formal nicht erfüllt. Der Eigentümer akzeptiert Öffentlichkeit, sofern keine sensiblen Inhalte gepusht werden. |
 
-## Details
+## Aktuelle Testzahlen und Geltungsbereich
 
-### 1. AssertJ fluent Assertions + Hilfsstrukturen — ⚠️ teilweise
+Beim geprüften lokalen Java-25-Lauf auf `dev`: **28** reguläre JUnit/jqwik-Testaufrufe in sieben Klassen und **8** separate E2E-Testaufrufe, alle grün. JaCoCo misst 105 abgedeckte und 5 fehlende Branches (**95,45 %**) nur für `test`; PIT meldet 71 KILLED, 13 SURVIVED und 3 NO_COVERAGE aus 87 Mutationen (**82 %** gerundet). Diese Werte sind ein Messstand, keine unveränderlichen Ziele; nach Codeänderungen neu ermitteln. Der derzeit veröffentlichte Pages-Chart zeigt noch **Instruction** Coverage. Der neue Code auf `dev` zeichnet nach einer Übernahme nach `main` eine eigenständige **Branch**-Historie und die echte 90-%-Branch-Grenze; die bisherige Instruction-Historie bleibt als `data/coverage.csv` erhalten, wird aber nicht als Branch-Wert umetikettiert. Der gesonderte PR-Vergleich in `coverage-gate.yml` verwendet weiterhin Instruction Coverage.
 
-- Benannte Fixtures sind vorhanden: `ROW_WIN_CROSS`, `DIAGONAL_WIN_CROSS`, `FULL_BOARD_NO_WINNER` ([TicTacToeMainTest.java:17-33](../src/test/java/ch/bbw/m450/tictactoe/TicTacToeMainTest.java#L17-L33)).
-- Die `isWin_*`-Tests bestehen jedoch fast ausschliesslich aus `assertThat(...).isTrue()` / `.isFalse()` ([Zeilen 37-49](../src/test/java/ch/bbw/m450/tictactoe/TicTacToeMainTest.java#L37-L49)) — genau die "langweiligen" Assertions, die das Kriterium ausschliesst. Aussagekräftigere/fluentere Assertions (z.B. mit Beschreibung via `.as(...)`, Vergleich auf Objektebene, Custom-Assertions) fehlen.
+`./gradlew test` führt die regulären Tests aus; `./gradlew e2eTest` die vollständigen Konsolenfälle; `./gradlew check` führt beide und die Coverage-Prüfung aus; `./gradlew pitest` läuft separat. Die Tests verwenden JDK **25**, den Gradle-Wrapper, JUnit Jupiter 6.1.3, AssertJ 3.27.7, Pioneer 2.3.0, jqwik 1.10.2, JaCoCo 0.8.16 und PIT 1.30.1. Diese im [`build.gradle`](../build.gradle) fixierten Versionen sowie das PIT-JUnit5-Plugin und das Gradle-PIT-Plugin entsprachen bei der Metadatenprüfung vom 26.10.2026 den neuesten stabilen Releases.
 
-### 2. ParameterizedTest, Vermeidung von Coderepetition — ⚠️ teilweise
+## Offene Risiken und nächste Verbesserungen
 
-- `isWin_detectsAllWinningLines` ist sauber parametrisiert und deckt alle 8 Gewinnlinien ab ([Zeilen 52-77](../src/test/java/ch/bbw/m450/tictactoe/TicTacToeMainTest.java#L52-L77)).
-- Allerdings decken `isWin_detectsRowWin` und `isWin_detectsDiagonalWin` dieselben Fälle (Reihe, Diagonale) nochmals einzeln ab → Redundanz statt Vermeidung von Coderepetition.
+1. **Schutz von `main`:** Der aktive Ruleset fordert PRs, hat aber keine verpflichtenden CI-Checks, null erforderliche Reviews und einen Bypass für eine Repository-Rolle. Ein direkter Push auf `main` wurde tatsächlich akzeptiert. Erforderliche Checks und Bypass/Review-Regeln erst nach Entscheidung über den Solo-Workflow ändern; grüne CI allein schützt `main` nicht.
+2. **Testqualität:** Ein lesbarer Board-Helper, konkrete Gewinnerfarben-Assertions und die Bereinigung doppelter Gewinnfälle sind umgesetzt. Zusätzliche Ausgabefälle könnten den Mutationswert verbessern. Einen 90-%-PIT-Gate nicht ohne neue Tests setzen: der gemessene Wert ist 82 %.
+3. **Messung/Kommunikation:** Der Branch-Chart wird erst nach einer Übernahme nach `main` auf Pages sichtbar; die alte Instruction-Historie bleibt getrennt. Der eigenständige PR-Coverage-Vergleich nutzt weiterhin Instruction Coverage, während das Build-Gate Branch Coverage verlangt. SonarLint und ein Stilcheck bleiben ungeprüft; Dependency-Versionen bei künftigen Releases erneut kontrollieren.
+4. **Release-Konsistenz:** [`build.gradle`](../build.gradle) steht weiterhin auf `1.0.1`, obwohl der aktuelle `main` neue Funktionalität und Eingabefixes enthält. Das lokal gebaute JAR ist nicht identisch mit dem früher veröffentlichten v1.0.1-Artefakt; vor dem nächsten Release Version, Changelog und Artefakt prüfen. Die Änderungen stehen unter `[Unreleased]` im [Changelog](../CHANGELOG.md).
 
-### 3. JaCoCo — ❌ fehlt
-
-- Kein JaCoCo-Plugin, kein Coverage-Report, keine Verification-Regel in [build.gradle](../build.gradle).
-
-### 4. StdIn/StdOut Testing mit JUnit Pioneer — ❌ fehlt
-
-- `HumanPlayer` liest direkt von `System.in` ([HumanPlayer.java:17](../src/main/java/ch/bbw/m450/tictactoe/players/HumanPlayer.java#L17)) und ist komplett ungetestet.
-- Keine JUnit-Pioneer-Dependency in [build.gradle](../build.gradle).
-
-### 5. CI-Pipeline mit Reports als Build Artifacts — ⚠️ teilweise
-
-- [ci.yml](../.github/workflows/ci.yml) führt bei Push/PR auf `main` `./gradlew test` und `./gradlew build` aus, Build ist grün.
-- Es fehlt ein Upload-Schritt (`actions/upload-artifact`) für Test-/Coverage-/Mutation-Reports.
-
-### 6. Perfekt spielender Player — ❌ fehlt
-
-- Nur `GreedyPlayer` (belegt immer erstes freies Feld) und `HumanPlayer` vorhanden. Kein Minimax- oder anderweitig perfekt spielender Player.
-
-### 7. Zusätzliches Testframework — ❌ fehlt
-
-- Einziges Test-Framework ist JUnit 5 (+ AssertJ als Assertion-Library). Kein zweites Framework (z.B. Spock, TestNG, Cucumber) mit eigenem Beispieltest im Build eingebunden.
-
-### 8. Mutation Testing mit PIT — ❌ fehlt
-
-- Kein PIT-Plugin/Task in [build.gradle](../build.gradle).
-
-### 9. Codequalität — ⚠️ nicht verifiziert
-
-- `var` wird im gesamten Code konsequent verwendet (z.B. [TicTacToeMain.java](../src/main/java/ch/bbw/m450/tictactoe/TicTacToeMain.java), [TicTacToeMainTest.java](../src/test/java/ch/bbw/m450/tictactoe/TicTacToeMainTest.java)) ✅.
-- Library-Versionen aktuell: `junit-bom 5.11.4`, `assertj-core 3.26.3` ([build.gradle:16-19](../build.gradle#L16-L19)) — ob dies die jeweils neuesten Releases sind, wurde nicht geprüft.
-- SonarLint-Warnings wurden nicht automatisiert geprüft (kein Sonar-Plugin/CI-Step vorhanden).
-
-### 10. Abgabe — –
-
-- Kein Code-Aspekt, betrifft den Abgabeprozess.
-
-## Priorisierte Lücken
-
-Fehlende bzw. unvollständige Punkte, absteigend nach Aufwand/Impact:
-
-1. JaCoCo einrichten (Report + 90%-Branch-Coverage-Gate)
-2. PIT-Mutation-Testing einrichten
-3. Perfekt spielenden Player implementieren und testen
-4. StdIn/StdOut-Tests für `HumanPlayer` mit JUnit Pioneer
-5. Zweites Testframework mit Beispieltest ergänzen
-6. CI-Pipeline um Artifact-Uploads erweitern
-7. Redundante `isWin_*`-Tests bereinigen, Assertions in Richtung fluent/aussagekräftig überarbeiten
-8. Library-Versionen und SonarLint-Konformität verifizieren
+Die alte Prioritätenliste vom 09.09. (JaCoCo/PIT/PerfectPlayer/Pioneer fehlten) ist damit überholt; sie ist nicht länger eine aktuelle Aufgabenliste.

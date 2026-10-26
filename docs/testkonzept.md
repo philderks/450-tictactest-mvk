@@ -1,16 +1,25 @@
 # Testkonzept
 
-Dieses Dokument beschreibt die Teststrategie für das TicTacToe-Projekt: was getestet wird, was bewusst nicht getestet wird, mit welchen Werkzeugen und nach welchem Muster.
+Dieses Dokument beschreibt die Teststrategie für TicTacTest: Testziele, Stufen, Werkzeuge, Grenzen und Erfolgskriterien. Aktuelle Einzeltests und Messwerte sind in [tests.md](tests.md) und [ist-situation.md](ist-situation.md) dokumentiert.
 
 ## Ziel
 
-Die Kernlogik des Spiels (Gewinnerkennung und Spielablauf) soll zuverlässig durch automatisierte Tests abgesichert sein, sodass Änderungen (z.B. neue Spieler-Strategien) mit Vertrauen vorgenommen werden können. Die CI-Pipeline ([.github/workflows/ci.yml](../.github/workflows/ci.yml)) führt die Tests bei jedem Push/PR auf `main` aus.
+Die Kernlogik des Spiels (Gewinnerkennung und Spielablauf) soll zuverlässig durch automatisierte Tests abgesichert sein, sodass Änderungen (z.B. neue Spieler-Strategien) mit Vertrauen vorgenommen werden können. Die CI-Pipeline ([.github/workflows/ci.yml](../.github/workflows/ci.yml)) führt die Tests bei Pushes auf Branches und bei Pull Requests nach `main` aus.
+
+| Testziel | Nachweis / Erfolgskriterium |
+|---|---|
+| TZ-01 Gewinnlogik und Regeln | Alle acht Gewinnlinien, Negativfälle, Unentschieden und ungültige Spielerzüge in Unit-/Integrationstests. |
+| TZ-02 Strategien | Greedy-Verhalten im Spiel, PerfectPlayer (gewinnt/blockiert/verliert nie), sowie legale Züge und unverändertes Brett mit jqwik. |
+| TZ-03 Konsolenverhalten | Vollständiger X-Sieg, O-Sieg und Draw via `main()`, ungültige/böswillige Eingaben und EOF mit zeitbegrenzten E2E-Tests. |
+| TZ-04 Automatisierte Qualitätskontrolle | Unit- und E2E-Tests grün, mindestens 90 % **Branch Coverage** im JaCoCo-Gate; PIT-Report vorhanden (derzeit kein PIT-Gate). |
+| TZ-05 Nachvollziehbarkeit | JUnit-/E2E-, JaCoCo- und PIT-Reports im CI-Lauf; Soll/Ist der E2E-Fälle dokumentiert. |
 
 ## Werkzeuge
 
-- **JUnit 5** (Jupiter) als Test-Framework, inkl. `@ParameterizedTest`/`@MethodSource` für datengetriebene Tests.
-- **AssertJ** für lesbare, fluent Assertions (`assertThat`, `assertThatThrownBy`).
-- Ausführung über Gradle: `./gradlew test` für Unit-/Integrationstests; `./gradlew e2eTest` für Konsolen-End-to-End-Tests mit JUnit Pioneer und `@StdIo`. `./gradlew check` führt beide Teststufen sowie die JaCoCo-Branch-Prüfung aus.
+- **JUnit Jupiter 6.1.3** als Test-Framework, inkl. `@ParameterizedTest`/`@MethodSource`; **AssertJ 3.27.7** für Assertions.
+- **JUnit Pioneer 2.3.0** für `@StdIo` und **jqwik 1.10.2** für Property-Tests.
+- **JaCoCo 0.8.16** erzeugt HTML/XML/CSV und erzwingt bei `check` mindestens 90 % Branch Coverage der regulären `test`-Suite; **PIT 1.30.1** erstellt einen Mutationsbericht ohne Mindestwert.
+- Ausführung mit dem Gradle-Wrapper und **Java 25**: `./gradlew test` für Unit-/Integrationstests (inkl. jqwik); `./gradlew e2eTest` für Konsolen-E2E-Tests; `./gradlew check` führt beide und das JaCoCo-Gate aus; `./gradlew pitest` läuft separat. Die E2E-Source-Set-Tests erhöhen nicht automatisch die JaCoCo-/PIT-Messwerte der regulären Suite.
 
 ## Aufbau / Teststufen
 
@@ -22,11 +31,11 @@ Betrifft `TicTacToeMain.isWin(...)`: eine reine, zustandslose Funktion ohne Seit
 
 - Alle 8 Gewinnlinien (3 Reihen, 3 Spalten, 2 Diagonalen) werden parametrisiert abgedeckt (`isWin_detectsAllWinningLines`).
 - Negativfälle: volles Brett ohne Gewinner (Unentschieden-Board), falsche Farbe gewinnt nicht.
-- Fixtures (benannte, wiederverwendbare Testbretter) statt Boards inline in jeder Methode aufzubauen, für Lesbarkeit.
+- `toBoard(String)` baut und validiert lesbare neunstellige X/O/`.`-Testbretter; die acht Gewinnlinien werden nur einmal über `@MethodSource` geprüft.
 
 ### 2. Unit-Tests für Spieler-Strategien
 
-Betrifft Implementierungen von `TicTacToePlayer`, z.B. `GreedyPlayer`: deterministisches Verhalten wird direkt geprüft (spielt immer das erste freie Feld).
+Betrifft Implementierungen von `TicTacToePlayer`: `GreedyPlayer` wird im vollständigen Spiel sowie beim vollen Brett geprüft; `PerfectPlayer` wird auf sofortigen Sieg, Block, nie verlorene Spiele, legales Feld und unverändertes Eingabebrett geprüft. Der jqwik-Property-Test erzeugt 100 Zugfolgen für erreichbare, noch nicht abgeschlossene Stellungen. Die umgekehrte Farbauswahl (`Stone.opponent()`) hat zwei eigene Tests.
 
 ### 3. Integrationstests für den Spielablauf
 
@@ -55,11 +64,17 @@ Abgedeckt sind auch ein Unentschieden (`play()` liefert `null`) und ein fehlerha
 
 **Gefundene Fehler und test-first-Behebung:** Zunächst wurde der Fall E2E-04 geschrieben und **vor der Auslagerung in den eigenen Source-Set** gezielt über `./gradlew test --tests '*TicTacToeE2ETest.invalidTextIsRejectedAndPlayerCanFinishGame'` ausgeführt: **rot** mit `NumberFormatException` in `HumanPlayer.play`. Erst danach wurde das Einlesen so geändert, dass Text zurückgewiesen und nochmals gefragt wird: derselbe Test **grün**. Analog war E2E-05 vor seiner Behebung rot (`IllegalStateException` bei `99`); ein EOF-Reproduktionstest war vor EOF-Behandlung rot (`NoSuchElementException`). Die aktuelle Suite läuft über `./gradlew e2eTest`. Die Spiellogik prüft weiterhin ungültige Züge anderer Spieler und kann dort `IllegalStateException` werfen. Ein unbegrenzt langer *laufender* Eingabestrom ist kein automatischer Abbruchgrund; die Timeout-Tests sichern den Testlauf ab, nicht einen generellen Schutz gegen alle denkbaren DoS-Angriffe.
 
-**Erfolgskriterium:** Alle acht E2E-Tests und `./gradlew check` sind grün; kein Test überschreitet das Timeout. Die E2E-Tests werden separat von den Unit-Tests gezählt. Ein veröffentlichtes Release-JAR ist durch diese Tests nicht nachträglich geändert; beim nächsten Release laufen sie durch `build` mit.
+**Erfolgskriterium:** Alle acht E2E-Tests und `./gradlew check` sind grün; kein Test überschreitet das Timeout. Die E2E-Tests werden separat von den Unit-Tests gezählt. Ein veröffentlichtes Release-JAR ist durch diese Tests nicht nachträglich geändert; beim nächsten Release laufen sie durch `build` mit. Der [CI-Lauf für `fbb7102`](https://github.com/philderks/450-tictactest-mvk/actions/runs/40367789784) hat beide Teststufen, JaCoCo, PIT, Build und Artefakt-Uploads erfolgreich ausgeführt. Lokal wurden nach der Testüberarbeitung auf `dev` 28 reguläre Tests, 8 E2E-Tests, 105/110 abgedeckte Branches (95,45 %) und 71/87 getötete Mutationen (82 %) gemessen. Messwerte sind Momentaufnahmen und nach Änderungen erneut zu prüfen.
+
+## Grenzen und Risiken
+
+- Der JaCoCo-Gate prüft Branches **nur** der regulären Tests; die eigene E2E-Suite wird separat ausgeführt. PIT hat kein Mindestziel; der aktuelle Wert liegt unter 90 %. Ausgabepfade und Grenzfälle können trotz grüner Tests überlebende Mutanten enthalten.
+- Die Tests simulieren Konsoleneingaben und decken endliche fehlerhafte Folgen und EOF ab, aber keinen unbegrenzt weiterlaufenden Eingabestrom, extrem lange Eingabezeilen, Betriebssystem-/Terminalverhalten oder jede mögliche DoS-Variante. Timeout schützt die Testausführung, nicht alle realen Anwendungen.
+- SonarLint wurde nicht ausgeführt; es gibt weder einen konfigurierten Scanner noch einen Analysebericht, daher sind null Warnungen nicht nachgewiesen. Die stabilen Versionen der in `build.gradle` deklarierten Test-/Coverage-/Mutationstools wurden am 26.10.2026 gegen Maven Central bzw. das Gradle Plugin Portal geprüft und JaCoCo auf 0.8.16 angehoben; zukünftige Releases sind dadurch nicht automatisch abgedeckt. Der GitHub-Ruleset erzwingt derzeit keine erfolgreichen CI-Checks vor dem Merge und erlaubt einen Rollen-Bypass; die Testpipeline ist deshalb kein garantierter Schutz für `main`. Näheres in [ist-situation.md](ist-situation.md).
 
 ## Namenskonvention & Dokumentation
 
-- Testmethoden folgen dem Schema `methodeUnterTest_erwartetesVerhalten` (z.B. `isWin_detectsRowWin`).
+- Testmethoden folgen dem Schema `methodeUnterTest_erwartetesVerhalten` (z.B. `isWin_returnsNoWinnerForDrawBoard`).
 - Unit-/Integrationstests werden nach dem **Given-When-Then**-Muster in [docs/tests.md](tests.md) dokumentiert; die E2E-Fälle mit Erwartung und tatsächlichem Verhalten stehen in der Tabelle oben:
   - **Given**: Ausgangszustand
   - **When**: ausgeführte Aktion

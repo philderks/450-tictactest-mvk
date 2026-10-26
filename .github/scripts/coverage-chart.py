@@ -1,4 +1,4 @@
-# Renders the coverage history (CSV with Datum,Commit,Coverage) as a PNG line chart.
+# Renders branch-coverage history (CSV with Datum,Commit,Coverage) as a PNG line chart.
 # Usage: coverage-chart.py <history.csv> <chart.png>
 import csv
 import sys
@@ -22,11 +22,11 @@ step = max(1, len(rows) // 10)
 
 fig, ax = plt.subplots(figsize=(10, 4.5))
 ax.plot(x, coverage, marker="o", color="#2a78d6")
-ax.axhline(GATE, color="#d03b3b", linestyle="--", linewidth=1, label=f"Quality Gate ({GATE} %)")
+ax.axhline(GATE, color="#d03b3b", linestyle="--", linewidth=1, label=f"Branch-Gate ({GATE} %)")
 ax.annotate(f"{coverage[-1]:.1f} %", (x[-1], coverage[-1]), textcoords="offset points", xytext=(0, 8), ha="center")
 
-ax.set_title("Coverage-Verlauf auf main")
-ax.set_ylabel("Instruction Coverage (%)")
+ax.set_title("Branch-Coverage-Verlauf auf main")
+ax.set_ylabel("Branch Coverage (%)")
 ax.set_ylim(max(0, min(min(coverage), GATE) // 5 * 5 - 5), 101)
 ax.set_xticks(x[::step], labels[::step], fontsize=8)
 ax.grid(alpha=0.3)

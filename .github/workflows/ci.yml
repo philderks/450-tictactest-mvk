@@ -121,22 +121,26 @@ jobs:
       - name: Assemble site with updated history
         run: |
           mkdir -p site/data
+          # Alte Instruction-Historie bleibt als Datenarchiv erhalten; nicht mit Branch-Werten mischen.
           if [ -f gh-pages/data/coverage.csv ]; then
             cp gh-pages/data/coverage.csv site/data/coverage.csv
+          fi
+          if [ -f gh-pages/data/branch-coverage.csv ]; then
+            cp gh-pages/data/branch-coverage.csv site/data/branch-coverage.csv
           else
-            echo "Datum,Commit,Coverage" > site/data/coverage.csv
+            echo "Datum,Commit,Coverage" > site/data/branch-coverage.csv
           fi
 
-          coverage=$(bash .github/scripts/coverage-percent.sh coverage-report)
-          echo "$(date -u +%Y-%m-%d),${GITHUB_SHA:0:7},$coverage" >> site/data/coverage.csv
+          coverage=$(bash .github/scripts/coverage-percent.sh coverage-report BRANCH)
+          echo "$(date -u +%Y-%m-%d),${GITHUB_SHA:0:7},$coverage" >> site/data/branch-coverage.csv
 
-          # Startseite ist der JaCoCo-Report, mit dem Verlaufsdiagramm über der Tabelle
+          # Startseite ist der JaCoCo-Report, mit dem Branch-Verlaufsdiagramm über der Tabelle
           cp -r coverage-report/html/. site/
-          python .github/scripts/coverage-chart.py site/data/coverage.csv site/coverage-chart.png
-          sed -i 's|</div><h1>|</div><h2>Coverage-Verlauf</h2><img src="coverage-chart.png" alt="Coverage-Verlauf" style="max-width: 100%"><hr><h1>|' site/index.html
+          python .github/scripts/coverage-chart.py site/data/branch-coverage.csv site/coverage-chart.png
+          sed -i 's|</div><h1>|</div><h2>Branch-Coverage-Verlauf</h2><img src="coverage-chart.png" alt="Branch-Coverage-Verlauf" style="max-width: 100%"><hr><h1>|' site/index.html
           grep -q coverage-chart.png site/index.html
 
-          echo "Coverage auf main: **$coverage %**" >> "$GITHUB_STEP_SUMMARY"
+          echo "Branch Coverage auf main: **$coverage %**" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
