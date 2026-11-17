@@ -3,8 +3,10 @@
 Diese Dokumentation begleitet Auftrag 1 schrittweise. Die praktischen Versuche aus
 Teil 1 sind durchgeführt. Teil 2 ist ebenfalls umgesetzt: Die Version wird aus dem
 Release-Jar ausgelesen und ist per HTTP abrufbar. Teil 3 ergänzt das statische
-Frontend mit konfigurierbaren Adressen und beiden Versionsanzeigen. Offen ist
-Teil 4, die Release-Erweiterung; die Cloud-Infrastruktur gehört erst zu Auftrag 2.
+Frontend mit konfigurierbaren Adressen und beiden Versionsanzeigen. Teil 4 ist
+implementiert und mit lokalen Kandidaten-Artefakten geprüft; Veröffentlichung und
+erneuter Test der echten GitHub-Release-Assets stehen noch aus. Die
+Cloud-Infrastruktur gehört erst zu Auftrag 2.
 
 ## Teil 1 – Werkzeug und Funktionsweise
 
@@ -402,5 +404,65 @@ node --test scripts/tests/frontend.test.cjs
 
 Node.js ist nur für diese JavaScript-Tests erforderlich, nicht für das Frontend
 selbst. Die lokalen Python-Webserver sind Versuchswerkzeuge, keine Empfehlung für
-den öffentlichen Produktionsbetrieb. **Teil 4 (Release-Assets) und AWS wurden noch
-nicht umgesetzt.**
+den öffentlichen Produktionsbetrieb. Die Release-Erweiterung folgt in Teil 4;
+AWS ist noch nicht eingerichtet.
+
+## Teil 4 – Release um Web-Assets erweitern
+
+Die Implementierung bereitet Version **1.1.0** vor. Der bestehende Release-Workflow
+behält Tag-Trigger, Versionsprüfung, Main-Ancestry-Check, Java-Tests, Build und
+Jar-Smoke-Test bei. Neu prüft er auch Frontend und Runtime-Werkzeuge und lädt neben
+dem Jar zwei ZIP-Dateien hoch, alle drei Artefakte mit eigener SHA-256-Prüfsumme.
+Ein normaler Branch-Push erstellt weiterhin keinen Release und deployt keine App.
+
+[`scripts/package-web-release.py`](../scripts/package-web-release.py) erhält die
+bereits vom Workflow geprüfte Version. Es paketiert nur die benötigten Dateien,
+setzt im Frontend-Archiv `version.txt` auf diese Version und lässt
+`frontend/version.txt` im Checkout unverändert bei `dev`. Ungültige Versionswerte
+werden vor Dateierzeugung abgewiesen.
+
+Das Frontend-Archiv enthält die statischen Dateien und eine lokale öffentliche
+Konfigurationsvorlage. Das zusätzliche Runtime-Archiv enthält das Startskript und
+die beiden Python-Werkzeuge sowie eine Anleitung. Alle eigenen Dateien zum Starten
+sind damit in den Assets enthalten; Java 25, ttyd, Bash und Python sind installierte
+Voraussetzungen. EC2, Firewall, Systemd und ein Produktions-Webserver gehören zur
+Infrastruktur, nicht in dieses Anwendungspaket.
+
+Auch ein kleines Frontend braucht einen eingefrorenen Stand: Ein versioniertes
+Archiv macht Auslieferung und Rollback unabhängig vom aktuellen Branch. Ein Nutzer
+kann die Assets direkt herunterladen und starten, ohne Repository, Build oder Node.
+Umgebungsadressen werden erst in der entpackten `config.js` gesetzt.
+
+Vollständiger Ablauf, Asset-Liste und Downloadbefehle stehen in
+[RELEASE.md](../RELEASE.md#release-testen). Die Vorlage der mitgelieferten Anleitung
+liegt in [`scripts/runtime-README.md`](../scripts/runtime-README.md).
+
+### Bereits durchgeführter Vorabtest – noch kein veröffentlichter Release
+
+1. `clean check pitest jar` mit Java 25 erfolgreich ausgeführt: 28 reguläre Tests
+   und 8 E2E-Tests ohne Fehler; Branch-Gate bestanden. PIT erkannte 71 von 87 Mutationen.
+2. Frontend- und Runtime-Archiv für 1.1.0 erzeugt und zusammen mit dem gebauten Jar
+   sowie den Prüfsummen in einen separaten Ordner ausserhalb des Checkouts kopiert.
+   Die sechs Kandidaten-Dateien und alle drei Prüfsummen wurden geprüft.
+3. Beide Archive dort entpackt. Nur die öffentliche `config.js` der entpackten Kopie
+   auf freie Testports angepasst; kein Anwendungscode aus dem Checkout verwendet.
+4. Das enthaltene `start-console.sh` startete das Kandidaten-Jar direkt in ttyd und
+   erzeugte die Backend-Versionsdatei aus dessen Manifest. Auch Versionsserver und
+   Frontend wurden ausschliesslich aus den entpackten Assets gestartet.
+5. Im Browser wurden Backend **1.1.0** und Frontend **1.1.0** angezeigt. Im iframe
+   wurde mit `4`, `2`, `6` gewonnen; die tatsächlich empfangene Terminal-Ausgabe
+   enthielt `...and the winner is: CROSS`.
+6. Die zusätzlichen Testserver wurden anschliessend beendet; der bisherige private
+   Zugang aus Teil 3 blieb bestehen. Das Jar blieb beim Starten unverändert.
+
+Zusätzlich bestanden 10 Python-Tests und 3 JavaScript-Tests; `actionlint` prüfte
+die geänderten Workflows ohne Befund. Die CI enthält einen eigenen `web-checks`-Job,
+damit die neuen Prüfungen auch bei Branch-Pushes laufen.
+
+**Noch offen:** Der Kandidat wurde lokal gebaut, nicht von GitHub heruntergeladen.
+Für den verpflichtenden echten Release-Test muss der geprüfte Stand zuerst über
+`dev` nach `main` gelangen, danach als `v1.1.0` veröffentlicht und erneut aus den
+heruntergeladenen Assets gestartet werden. Dazu wird vor Push/PR beziehungsweise
+Main-Merge die Freigabe für die abweichende Reihenfolge eingeholt. Bis dahin ist
+Teil 4 ausdrücklich **nicht vollständig abgeschlossen**; es wurde kein Tag
+veröffentlicht und der Main-Check nicht umgangen.

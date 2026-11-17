@@ -9,6 +9,27 @@ on:
   workflow_dispatch:
 
 jobs:
+  web-checks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install Node for frontend tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test frontend, metadata and release packaging
+        run: |
+          python3 -B -m unittest discover -s scripts/tests -v
+          node --test scripts/tests/frontend.test.cjs
+          bash -n scripts/start-console.sh
+
   build:
     runs-on: ubuntu-latest
     permissions:

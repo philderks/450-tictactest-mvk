@@ -28,6 +28,16 @@ jobs:
           java-version: '25'
           cache: gradle
 
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install Node for frontend tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Check release conditions
         id: version
         run: |
@@ -50,6 +60,12 @@ jobs:
       - name: Run tests
         run: ./gradlew test
 
+      - name: Test web assets and runtime tools
+        run: |
+          python3 -B -m unittest discover -s scripts/tests -v
+          node --test scripts/tests/frontend.test.cjs
+          bash -n scripts/start-console.sh
+
       - name: Build JAR (incl. coverage check)
         run: ./gradlew build
 
@@ -61,7 +77,12 @@ jobs:
           printf '4\n8\n2\n6\n' | java -jar "$JAR" | tee smoke.log
           grep -q 'winner is: CROSS' smoke.log
 
-      - name: Create SHA-256 checksum
+      - name: Package frontend and runtime tools
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: python3 scripts/package-web-release.py "$VERSION" build/web
+
+      - name: Create JAR SHA-256 checksum
         working-directory: build/libs
         run: sha256sum "tictactest-${{ steps.version.outputs.version }}.jar" > "tictactest-${{ steps.version.outputs.version }}.jar.sha256"
 
@@ -74,6 +95,8 @@ jobs:
             echo "**Tag:** \`$GITHUB_REF_NAME\`"
             echo "**Commit:** $GITHUB_SHA"
             echo "**Artefakt:** \`tictactest-$VERSION.jar\` (Prüfsumme in \`tictactest-$VERSION.jar.sha256\`)"
+            echo "**Frontend:** \`tictactest-frontend-$VERSION.zip\` (mit SHA-256-Prüfsumme)"
+            echo "**Startwerkzeuge:** \`tictactest-runtime-$VERSION.zip\` (mit SHA-256-Prüfsumme)"
             echo
             echo "## Änderungen"
             cat changes.md
@@ -85,11 +108,21 @@ jobs:
             echo '```bash'
             echo "java -jar tictactest-$VERSION.jar"
             echo '```'
+            echo
+            echo "## Im Browser starten"
+            echo
+            echo 'Frontend- und Runtime-Archiv herunterladen und die zugehörigen Prüfsummen prüfen.'
+            echo 'Beide Archive in eigene Ordner entpacken; runtime/README.md enthält alle lokalen Startbefehle.'
+            echo 'Zusätzlich benötigt: Java 25, Python 3, Bash und ttyd (getestet mit 1.7.7). Kein Git-Checkout und kein Frontend-Build erforderlich.'
           } > notes.md
 
           gh release create "$GITHUB_REF_NAME" \
             "build/libs/tictactest-$VERSION.jar" \
             "build/libs/tictactest-$VERSION.jar.sha256" \
+            "build/web/tictactest-frontend-$VERSION.zip" \
+            "build/web/tictactest-frontend-$VERSION.zip.sha256" \
+            "build/web/tictactest-runtime-$VERSION.zip" \
+            "build/web/tictactest-runtime-$VERSION.zip.sha256" \
             --title "TicTacTest $GITHUB_REF_NAME" \
             --notes-file notes.md \
             --verify-tag
