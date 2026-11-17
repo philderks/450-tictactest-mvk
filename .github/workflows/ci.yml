@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: '3.13'
       - name: Install Node for frontend tests
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
       - name: Test frontend, metadata and release packaging
