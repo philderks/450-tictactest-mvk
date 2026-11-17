@@ -1,9 +1,9 @@
 # TicTacTest als Web-Konsole
 
 Diese Dokumentation begleitet Auftrag 1 schrittweise. Die praktischen Versuche aus
-Teil 1 sind durchgeführt. In Teil 2 wird die Versionsdatei automatisch aus dem Jar
-erzeugt; eine HTTP-Versionsabfrage ist noch nicht eingerichtet. Frontend und
-Release-Erweiterung folgen später.
+Teil 1 sind durchgeführt. Teil 2 ist ebenfalls umgesetzt: Die Version wird aus dem
+Release-Jar ausgelesen und ist per HTTP abrufbar. Frontend und Release-Erweiterung
+folgen später; die Cloud-Infrastruktur gehört erst zu Auftrag 2.
 
 ## Teil 1 – Werkzeug und Funktionsweise
 
@@ -147,7 +147,7 @@ Daher lässt sich die sichere Spielerzahl nicht einfach aus 1 GB geteilt durch d
 beobachteten Speicher eines Spiels bestimmen. Verbindungsgrenze, Heap-Begrenzung
 und Messungen auf der tatsächlichen Zielinstanz sind getrennt zu betrachten.
 
-## Teil 2 – Versionsabfrage: Versionsdatei erzeugen
+## Teil 2 – Versionsabfrage per HTTP
 
 Das heruntergeladene Jar enthält in `META-INF/MANIFEST.MF` bereits:
 
@@ -200,6 +200,90 @@ Alle drei Tests bestanden. Zusätzlich wurde das Skript mit dem echten Release-J
 v1.0.1 ausgeführt, die erzeugte Datei gelesen und die unveränderte SHA-256-Prüfsumme
 des Jars kontrolliert.
 
-**Noch offen in Teil 2:** Die Datei per HTTP ausliefern und die Antwort überprüfen.
-Das Jar bleibt unverändert. Die Versionsdatei allein ist noch kein Nachweis, dass
-das Spiel tatsächlich gesund läuft.
+### Warum ein zusätzlicher HTTP-Endpunkt?
+
+ttyd überträgt die interaktive Terminal-Ein-/Ausgabe. Das Frontend und später die
+Deployment-Pipeline sollen die Versionsnummer aber mit einer einfachen
+HTTP-GET-Anfrage lesen können, ohne eine Spielverbindung zu öffnen.
+
+```text
+Release-Jar → Manifest auslesen → version.txt → Webserver → HTTP-GET
+
+Browser → /             → ttyd → Java-Spiel
+Browser → /version.txt  → automatisch erzeugte Versionsdatei
+```
+
+Der Webserver übernimmt die Auslieferung. Das Spiel selbst braucht dafür weder
+einen HTTP-Server noch Änderungen an seinem Code.
+
+### Lokal ohne Tailscale ausprobieren
+
+Die folgenden Befehle im Repository ausführen. `RUNTIME_DIR` bezeichnet den eigenen
+Arbeitsordner mit dem zuvor heruntergeladenen Release-Jar; den Beispielpfad anpassen:
+
+```bash
+RUNTIME_DIR="$HOME/tictactest-local"
+mkdir -p "$RUNTIME_DIR/public"
+python3 scripts/backend-version.py \
+  "$RUNTIME_DIR/tictactest-1.0.1.jar" \
+  "$RUNTIME_DIR/public/version.txt"
+python3 -m http.server 7682 --bind 127.0.0.1 \
+  --directory "$RUNTIME_DIR/public"
+```
+
+In einem zweiten Terminal abfragen:
+
+```bash
+curl --fail --silent --show-error http://127.0.0.1:7682/version.txt
+```
+
+Die Antwort ist `1.0.1`, ohne Terminal-Escape-Codes oder Spielausgabe. In diesem
+separaten Web-Verzeichnis liegt nur die erzeugte Versionsdatei, nicht das Jar,
+Quellcode oder Zugangsdaten. Den einfachen Python-Server verwenden wir ausschliesslich
+für den lokalen Versuch, nicht als Empfehlung für den öffentlichen Cloud-Betrieb.
+
+### Privater gemeinsamer Versuch mit Tailscale Serve
+
+Beim gemeinsamen Versuch liefert Tailscale Serve bereits das Terminal über HTTPS
+aus. Wir haben auf demselben HTTPS-Port 8443 einen zusätzlichen Handler für genau
+die vorhandene Datei `version.txt` ergänzt. Die Terminal-Route `/` bleibt bestehen;
+es wird kein ganzes Arbeitsverzeichnis freigegeben.
+
+Für einen bereits bestehenden privaten Konsolen-Zugang, mit dem absoluten Pfad zur
+erzeugten Datei (Beispielpfad ersetzen):
+
+```bash
+VERSION_FILE="/absoluter/pfad/zur/version.txt"
+sudo tailscale serve --bg --https=8443 --set-path=/version.txt "$VERSION_FILE"
+tailscale serve status
+```
+
+Die ausgegebene HTTPS-Adresse mit dem Pfad `/version.txt` lässt sich im Browser
+oder mit `curl --fail` öffnen. Tailscale muss auf dem zugreifenden Rechner verbunden
+sein. Tailscale Funnel wurde nicht aktiviert: Der Zugang bleibt auf das Tailnet
+beschränkt. Diese Freigabe ist nur die Zugangshilfe für unseren lokalen Versuch,
+keine Voraussetzung für die spätere AWS-Lösung. Dort kann beispielsweise nginx
+die Versionsdatei neben der vorgeschalteten Web-Konsole ausliefern.
+
+### Nachweise für Teil 2
+
+- Vor der Einrichtung lieferte die private Versionsadresse HTTP 404, danach HTTP 200.
+- Die HTTP-Antwort hatte `Content-Type: text/plain; charset=utf-8` und den Inhalt
+  `1.0.1` mit abschliessendem Zeilenumbruch.
+- Die Antwort wurde automatisch mit `Implementation-Version` im echten Release-Jar
+  verglichen; beide stimmten überein.
+- Die Versionsnummer wurde zusätzlich im Browser geöffnet und gelesen.
+- Das Spiel war weiterhin erreichbar; ein Zug wurde über denselben HTTPS-Zugang
+  eingegeben und im Spielfeld dargestellt.
+- Die direkten URL-Pfade zum Jar und zum Python-Skript lieferten weiterhin HTTP 404.
+- Die bestehende Hermes-Weboberfläche auf HTTPS-Port 443 blieb unverändert.
+- Die lokale Python-HTTP-Server-Variante wurde ebenfalls mit der aus dem echten Jar
+  erzeugten Versionsdatei getestet und lieferte HTTP 200 mit demselben Inhalt.
+- Die SHA-256-Prüfsumme des Release-Jars blieb unverändert.
+
+**Wichtig für spätere Deployments:** Der Endpunkt zeigt die aus dem ausgewählten
+Artefakt erzeugten Versionsmetadaten. Er prüft nicht, ob gerade ein Java-Spielprozess
+läuft oder gesund ist. Jede neue Bereitstellung muss die Versionsdatei passend zum
+tatsächlich ausgewählten Jar erneuern; eine alte Datei darf nicht versehentlich als
+Nachweis für eine neue Version dienen. Bei der späteren automatisierten Prüfung
+soll die HTTP-Abfrage ohne Cache erfolgen.
