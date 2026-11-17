@@ -36,6 +36,16 @@ Das fertige JAR der neuesten Version liegt unter [Releases](https://github.com/p
 java -jar tictactest-<version>.jar
 ```
 
+### Im Browser spielen (lokaler Versuch)
+
+Das unveränderte Release-Jar läuft über `ttyd` in einer Web-Konsole. Das statische
+Frontend in [`frontend/`](frontend/) bettet sie ein und zeigt Backend- und
+Frontend-Version an; es benötigt weder Framework noch Build-Schritt.
+
+Startbefehle, `config.js` und die CORS-Freigabe für getrennte Ports sind in
+[docs/webkonsole.md](docs/webkonsole.md#teil-3--statisches-frontend) beschrieben.
+Dies ist noch kein AWS-Deployment.
+
 ## Build
 
 ```bash
@@ -59,4 +69,4 @@ Der DevContainer selbst wird über den Git-Commit-Hash versioniert, mit dem Merg
 
 ## Release
 
-Ein Release entsteht nur durch einen bewusst gesetzten Tag `vX.Y.Z` auf `main`. Der Workflow [release.yml](.github/workflows/release.yml) testet, baut und veröffentlicht dann das JAR als GitHub Release. Ablauf, Versionierungsregeln und Voraussetzungen: [RELEASE.md](RELEASE.md). Änderungen pro Version: [CHANGELOG.md](CHANGELOG.md).
+Ein Release entsteht nur durch einen bewusst gesetzten Tag `vX.Y.Z` auf `main`. Der Workflow [release.yml](.github/workflows/release.yml) testet, baut und veröffentlicht das JAR sowie ab 1.1.0 versionierte Frontend- und Runtime-Archive, jeweils mit SHA-256-Prüfsumme. Das Runtime-Archiv enthält die Anleitung zum Start ohne Git-Checkout. Ablauf, Versionierungsregeln und Voraussetzungen: [RELEASE.md](RELEASE.md). Änderungen pro Version: [CHANGELOG.md](CHANGELOG.md).

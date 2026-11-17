@@ -15,11 +15,11 @@ CHANGELOG.md und Version in build.gradle sind darin bereits aktualisiert
   ↓
 Annotierten Git-Tag vX.Y.Z auf main setzen und pushen
   ↓
-GitHub Actions (release.yml): Bedingungen prüfen → Tests → Build → JAR → Smoke-Test
+GitHub Actions (release.yml): Bedingungen prüfen → Java-/Web-Tests → JAR → Smoke-Test → Web-Archive
   ↓
-GitHub Release mit JAR + SHA-256-Prüfsumme
+GitHub Release mit JAR, Frontend-Archiv und Runtime-Archiv + je einer SHA-256-Prüfsumme
   ↓
-JAR vom Release herunterladen und testen
+Alle Release-Assets herunterladen und ohne Git-Checkout lokal starten
 ```
 
 ## Wann wird ein Release erstellt?
@@ -41,7 +41,7 @@ Auf einem Branch gestartet, tut der Workflow nichts.
 
 `main` ändert sich bei jedem gemergten Pull Request. Nicht jede dieser Änderungen ist für Benutzer relevant oder
 schon zusammen mit anderen Änderungen auslieferbar. Ein Release ist ein Versprechen an die Benutzer
-(Versionsnummer, Changelog, herunterladbares JAR) und soll deshalb eine bewusste Entscheidung sein.
+(Versionsnummer, Changelog, herunterladbare Assets) und soll deshalb eine bewusste Entscheidung sein.
 
 Technisch ist das so umgesetzt:
 
@@ -64,6 +64,8 @@ Enthält ein Release Änderungen mehrerer Arten, entscheidet die höchste.
 
 **Wo steht die Version?** An genau einer Stelle: `version = 'X.Y.Z'` in [build.gradle](build.gradle).
 Gradle übernimmt sie in den Dateinamen (`tictactest-X.Y.Z.jar`) und ins JAR-Manifest (`Implementation-Version`).
+Das Paketierungsskript erhält dieselbe geprüfte Version und schreibt sie in die
+`version.txt` des Frontend-Archivs. Die `dev`-Datei im Quellcode wird dabei nicht geändert.
 Der Release-Workflow bricht ab, wenn der Tag nicht genau `v` + diese Version ist. So können Tag und JAR nie
 auseinanderlaufen.
 
@@ -130,11 +132,34 @@ Unter **Actions → Release** läuft jetzt der Workflow. Wenn er grün ist, ersc
 1. **Repository auschecken** – genau den Commit, auf den der Tag zeigt.
 2. **Java installieren** – Temurin JDK 25.
 3. **Bedingungen prüfen** – Tag = `v` + Version aus `build.gradle`, Commit liegt auf `main`, Changelog-Abschnitt existiert.
-4. **Tests ausführen** – `./gradlew test`.
+4. **Tests ausführen** – Java-Tests sowie Python- und JavaScript-Tests für Frontend, Versionsendpunkt, Startskript und Paketierung. Python 3.13 und Node.js 22 sind dafür auf dem Runner eingerichtet; Node ist keine Laufzeitvoraussetzung der statischen Webseite.
 5. **Bauen und JAR erzeugen** – `./gradlew build` (inkl. Coverage-Prüfung) erzeugt `build/libs/tictactest-X.Y.Z.jar`.
 6. **Smoke-Test** – spielt mit dem JAR ein ganzes Spiel (Züge per Pipe) und prüft, dass es mit einem Gewinner endet.
-7. **Prüfsumme** – erzeugt `tictactest-X.Y.Z.jar.sha256`.
-8. **GitHub Release erstellen** – Titel `TicTacTest vX.Y.Z`. Der Text enthält Tag, Commit-ID, den Changelog-Abschnitt der Version und den Startbefehl. JAR und Prüfsumme werden angehängt.
+7. **Web-Assets paketieren** – `python3 scripts/package-web-release.py X.Y.Z build/web` erzeugt die beiden ZIP-Dateien und deren Prüfsummen. Nur eine feste Liste benötigter Dateien wird aufgenommen, nicht der gesamte Arbeitsordner.
+8. **JAR-Prüfsumme** – erzeugt `tictactest-X.Y.Z.jar.sha256`.
+9. **GitHub Release erstellen** – Titel `TicTacTest vX.Y.Z`. Der Text enthält Tag, Commit-ID, den Changelog-Abschnitt, Startvoraussetzungen und den Hinweis auf die vollständige Anleitung im Runtime-Archiv. Alle sechs Dateien werden angehängt.
+
+## Welche Assets gehören zum Release?
+
+| Datei | Inhalt |
+|---|---|
+| `tictactest-X.Y.Z.jar` | Unverändert auszuführendes Java-Spiel dieses Releases |
+| `tictactest-frontend-X.Y.Z.zip` | HTML, CSS, JavaScript, lokale Konfigurationsvorlage und automatisch gesetzte Frontend-Version |
+| `tictactest-runtime-X.Y.Z.zip` | `start-console.sh`, `backend-version.py`, `serve-backend-version.py` und eine versionierte `README.md` mit allen Startbefehlen |
+| jeweils `.sha256` | SHA-256-Prüfsumme des zugehörigen Artefakts |
+
+Die Startwerkzeuge gehören zum **Anwendungsrelease**, weil sich ihr Verhalten mit der
+Anwendung ändern kann und eine frühere Version ohne aktuellen Git-Checkout wieder
+startbar bleiben muss. Java 25, Python, Bash und ttyd sind installierte Voraussetzungen.
+EC2, Firewall, Systemd-Units und ein Produktions-Webserver gehören dagegen zur späteren
+**Infrastruktur**. Sie sind nicht Teil dieses lokalen Anwendungspakets.
+
+Auch wenige statische Frontend-Dateien lohnen sich als Release-Asset: Ein ZIP hält
+einen eindeutig versionierten Stand fest, lässt sich prüfen, archivieren und gezielt
+zurückrollen. Frontend und Backend können später getrennt bereitgestellt werden;
+die Dateien müssen dafür weder neu gebaut noch aus einem beweglichen Branch kopiert
+werden. Nur die öffentliche Umgebungskonfiguration wird in der entpackten Kopie
+angepasst, nie Zugangsdaten in das Archiv geschrieben.
 
 ## Welcher Commit gehört zu einem Release?
 
@@ -159,7 +184,8 @@ keine Laufzeit-Abhängigkeiten, deshalb ist kein "Fat-JAR" nötig.
 Auf der Release-Seite des Repositorys:
 <https://github.com/philderks/450-tictactest-mvk/releases>
 (die neueste Version: <https://github.com/philderks/450-tictactest-mvk/releases/latest>).
-Unter *Assets* liegen `tictactest-X.Y.Z.jar` und die Prüfsumme.
+Ab Version 1.1.0 liegen unter *Assets* Jar, Frontend-Archiv und Runtime-Archiv mit
+jeweils einer Prüfsumme. Ältere Releases enthalten nur Jar und Jar-Prüfsumme.
 
 ## Was enthält das Changelog?
 
@@ -176,7 +202,7 @@ in den Versionsabschnitt verschoben.
 
 ## Was passiert, wenn beim Release ein Test fehlschlägt?
 
-Der Workflow bricht beim fehlgeschlagenen Schritt ab. Es wird **kein** Release erstellt und kein JAR
+Der Workflow bricht beim fehlgeschlagenen Schritt ab. Es wird **kein** Release erstellt und kein Artefakt
 veröffentlicht. Der Tag existiert dann bereits auf GitHub, hat aber keinen Release. Vorgehen:
 
 1. Fehler auf `dev` beheben und über einen Pull Request nach `main` bringen.
@@ -196,18 +222,36 @@ mit derselben Versionsnummer.
 
 ## Release testen
 
-Ein Release gilt erst als erfolgreich, wenn das veröffentlichte Artefakt selbst funktioniert:
+Ein Release gilt erst als erfolgreich, wenn die **veröffentlichten** Assets selbst
+funktionieren. Lokal erzeugte Kandidaten ersetzen diesen Nachweis nicht. Für einen
+bereits veröffentlichten Release ab 1.1.0 (Version bei Bedarf anpassen):
 
 ```bash
-mkdir /tmp/release-test && cd /tmp/release-test
-curl -LO https://github.com/philderks/450-tictactest-mvk/releases/download/v1.0.0/tictactest-1.0.0.jar
-curl -LO https://github.com/philderks/450-tictactest-mvk/releases/download/v1.0.0/tictactest-1.0.0.jar.sha256
-sha256sum -c tictactest-1.0.0.jar.sha256
-java -jar tictactest-1.0.0.jar
+VERSION=1.1.0
+RELEASE_DIR="$HOME/tictactest-release-test-$VERSION"
+mkdir "$RELEASE_DIR"
+cd "$RELEASE_DIR"
+BASE="https://github.com/philderks/450-tictactest-mvk/releases/download/v$VERSION"
+for asset in "tictactest-$VERSION.jar" \
+  "tictactest-frontend-$VERSION.zip" "tictactest-runtime-$VERSION.zip"; do
+  curl --fail --location --remote-name "$BASE/$asset"
+  curl --fail --location --remote-name "$BASE/$asset.sha256"
+  sha256sum -c "$asset.sha256"
+done
+unzip "tictactest-frontend-$VERSION.zip" -d frontend
+unzip "tictactest-runtime-$VERSION.zip" -d runtime
 ```
 
-Das Spiel muss starten und sich bis zum Ende spielen lassen, ohne dass etwas aus dem Quellcode gebaut wird.
-Alternativ das JAR über die Release-Seite im Browser herunterladen.
+Danach die drei Prozesse gemäss `runtime/README.md` starten. Das Spiel muss sich im
+eingebetteten Terminal vollständig spielen lassen, beide Versionsanzeigen müssen
+stimmen. Dabei darf **nichts aus dem Git-Checkout** gebraucht oder neu gebaut werden.
+Prüfsummen, beobachtete Versionen und Spielergebnis festhalten. Alternativ alle
+sechs Assets über die Release-Seite im Browser herunterladen.
+
+**Reihenfolge für Auftrag 1:** Feature-Branch prüfen → PR nach `dev` → nach Freigabe
+Promotion per PR nach `main` → Tag → Release-Lauf → Assets erneut herunterladen und
+testen. Der bestehende Main-Ancestry-Check wird dafür nicht abgeschwächt. Solange
+der echte Release-Test fehlt, bleibt Teil 4 als noch nicht vollständig verifiziert markiert.
 
 ## Wie entsteht aus einem Stand des Repositorys eine veröffentlichte Version?
 
