@@ -6,7 +6,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionsnu
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-17
+
 ### Added
+- Statisches Browser-Frontend mit eingebetteter Web-Konsole, Spielregeln und unabhängigen Versionsanzeigen; Server-Adressen werden über `config.js` konfiguriert.
+- Automatische Backend-Versionsdatei aus dem Release-Jar und ein lokaler HTTP-Endpunkt mit gezielter CORS-Freigabe.
+- Versioniertes Frontend-Archiv und Runtime-Werkzeuge mit Startskript, Anleitung und SHA-256-Prüfsummen als zusätzliche Release-Assets.
 - Separate End-to-End-Tests für vollständige Konsolenspiele, fehlerhafte Eingaben und Eingabeende mit Timeout-Absicherung; Gradle-Task und CI-Report.
 
 ### Fixed
