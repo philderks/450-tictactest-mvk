@@ -2,8 +2,9 @@
 
 Diese Dokumentation begleitet Auftrag 1 schrittweise. Die praktischen Versuche aus
 Teil 1 sind durchgeführt. Teil 2 ist ebenfalls umgesetzt: Die Version wird aus dem
-Release-Jar ausgelesen und ist per HTTP abrufbar. Frontend und Release-Erweiterung
-folgen später; die Cloud-Infrastruktur gehört erst zu Auftrag 2.
+Release-Jar ausgelesen und ist per HTTP abrufbar. Teil 3 ergänzt das statische
+Frontend mit konfigurierbaren Adressen und beiden Versionsanzeigen. Offen ist
+Teil 4, die Release-Erweiterung; die Cloud-Infrastruktur gehört erst zu Auftrag 2.
 
 ## Teil 1 – Werkzeug und Funktionsweise
 
@@ -244,10 +245,13 @@ für den lokalen Versuch, nicht als Empfehlung für den öffentlichen Cloud-Betr
 
 ### Privater gemeinsamer Versuch mit Tailscale Serve
 
-Beim gemeinsamen Versuch liefert Tailscale Serve bereits das Terminal über HTTPS
-aus. Wir haben auf demselben HTTPS-Port 8443 einen zusätzlichen Handler für genau
+In Teil 2 lieferte Tailscale Serve bereits das Terminal über HTTPS aus. Wir haben
+auf demselben HTTPS-Port 8443 einen zusätzlichen Handler für genau
 die vorhandene Datei `version.txt` ergänzt. Die Terminal-Route `/` bleibt bestehen;
 es wird kein ganzes Arbeitsverzeichnis freigegeben.
+
+Für den anschliessenden Versuch mit getrennten Frontend-/Backend-Origins ersetzt
+Teil 3 diesen Datei-Handler durch einen Proxy zum CORS-fähigen Versionsendpunkt.
 
 Für einen bereits bestehenden privaten Konsolen-Zugang, mit dem absoluten Pfad zur
 erzeugten Datei (Beispielpfad ersetzen):
@@ -287,3 +291,116 @@ läuft oder gesund ist. Jede neue Bereitstellung muss die Versionsdatei passend 
 tatsächlich ausgewählten Jar erneuern; eine alte Datei darf nicht versehentlich als
 Nachweis für eine neue Version dienen. Bei der späteren automatisierten Prüfung
 soll die HTTP-Abfrage ohne Cache erfolgen.
+
+## Teil 3 – Statisches Frontend
+
+[`frontend/`](../frontend/) enthält nur HTML, CSS und JavaScript, ohne Framework,
+Paketinstallation oder Build-Schritt:
+
+- `index.html` und `style.css`: Titel, Spielregeln, Feldnummern und eingebettetes Terminal.
+- `config.js`: öffentliche, umgebungsspezifische Server-Adressen; niemals Secrets.
+- `app.js`: liest die Konfiguration, setzt das iframe-Ziel und lädt beide Versionen.
+- `version.txt`: Frontend-Version. Aktuell steht darin bewusst `dev`: Ein eigenes
+  Frontend-Release entsteht erst in Teil 4. Dies ist nicht die Backend-Version.
+
+### Konfiguration statt fest eingebauter Server-Adresse
+
+Die im Repository enthaltene `config.js` zeigt auf lokale Dienste:
+
+```javascript
+window.TICTACTEST_CONFIG = {
+  consoleUrl: 'http://localhost:7681/',
+  backendVersionUrl: 'http://localhost:7682/version.txt',
+};
+```
+
+Die HTML-Datei lädt zuerst `config.js`, dann `app.js`. Für eine andere Umgebung
+wird nur die Konfigurationsdatei in der bereitgestellten Kopie ersetzt, nicht der
+Anwendungscode. Die Konfiguration des privaten gemeinsamen Versuchs liegt ausserhalb
+des Repositories. Bei einer HTTPS-Seite müssen auch die Backend-Adressen HTTPS
+verwenden, sonst kann der Browser Mixed Content blockieren.
+
+### Getrennte lokale Dienste starten
+
+Das Terminal aus Teil 1 läuft weiterhin auf Port 7681. Die Versionsdatei aus Teil 2
+muss vorher aus dem ausgewählten Release-Jar erzeugt worden sein. Statt des einfachen
+Dateiservers verwenden wir jetzt den kleinen, nur lesenden Versionsserver mit einer
+expliziten Liste erlaubter Frontend-Origins (Beispielpfad ersetzen):
+
+```bash
+python3 -B scripts/serve-backend-version.py /pfad/zur/version.txt \
+  --allow-origin http://localhost:8000 \
+  --allow-origin http://127.0.0.1:8000
+```
+
+Er bindet standardmässig nur an `127.0.0.1:7682` und liefert ausschliesslich
+`/version.txt`. Andere Pfade erhalten HTTP 404; eine fehlende Versionsdatei führt
+zu HTTP 503. Antworten mit Versionsdaten haben `Cache-Control: no-store`.
+
+In einem weiteren Terminal das Frontend separat starten:
+
+```bash
+python3 -m http.server 8000 --bind 127.0.0.1 --directory frontend
+```
+
+Danach `http://localhost:8000/` im Browser öffnen. Damit laufen drei kleine Prozesse:
+ttyd für das Spiel, der Versionsserver und der statische Frontend-Server. Die beiden
+Backend-Endpunkte sind separat konfigurierbar; ein vorgeschalteter Webserver kann
+sie wie im privaten Versuch unter einer gemeinsamen Backend-Adresse zusammenführen.
+
+### Beobachtung: iframe funktioniert, Versionsabfrage zunächst nicht
+
+Im ersten Browser-Versuch wurde das Terminal eingebettet, aber die JavaScript-Abfrage
+der Backend-Version scheiterte: Das Frontend zeigte `nicht erreichbar`, während die
+eigene Frontend-Version `dev` geladen wurde. Der Backend-Datei-Handler lieferte keinen
+`Access-Control-Allow-Origin`-Header. Nach der gezielten Freigabe wurde `1.0.1`
+auch im Frontend angezeigt.
+
+Eine Origin besteht aus **Schema, Host und Port**. Auch zwei Adressen auf demselben
+Host sind bei unterschiedlichen Ports verschiedene Origins. Das Einbetten eines
+iframes erlaubt dem übergeordneten JavaScript nicht automatisch, fremde HTTP-Antworten
+zu lesen. Deshalb ist die CORS-Freigabe für den Versions-GET erforderlich.
+
+`--allow-origin` lässt sich mehrfach angeben. Nur bei einem exakt passenden
+`Origin`-Request-Header sendet der Versionsserver `Access-Control-Allow-Origin`
+mit dieser Adresse; `Vary: Origin` kennzeichnet die originabhängige Antwort.
+Es gibt keine pauschale Stern-Freigabe und keine Cookies/Zugangsdaten für den GET.
+CORS ist eine Browser-Leseregel, keine Authentifizierung: Der private Zugang wird
+weiterhin durch das Tailnet begrenzt, nicht durch CORS.
+
+Im privaten Versuch verwendet das Frontend HTTPS-Port 8444, das Backend 8443.
+Für dessen Versionsroute wird der bisherige Datei-Handler durch einen Proxy zum
+lokalen Versionsserver ersetzt. In dessen Allowlist steht die genaue HTTPS-Origin
+des Frontends (Hostnamen im Beispiel ersetzen):
+
+```bash
+sudo tailscale serve --bg --https=8443 --set-path=/version.txt \
+  http://127.0.0.1:7682/version.txt
+sudo tailscale serve --bg --https=8444 http://127.0.0.1:8000
+```
+
+Die zusätzliche Origin wird beim Start des Versionsservers mit
+`--allow-origin https://DEIN-TAILSCALE-HOST:8444` angegeben. Die Terminal-Route auf
+8443 und die bestehende Hermes-Oberfläche auf 443 bleiben unverändert; kein Funnel.
+
+### Prüfung
+
+- Über das eingebettete Terminal eine ganze Partie mit den Zügen `4`, `2`, `6`
+  gespielt: `the winner is: CROSS` und anschliessender Reconnect-Hinweis.
+- Nach der CORS-Freigabe beide Versionsanzeigen geprüft: Backend `1.0.1`, Frontend `dev`.
+- Desktop- und schmale Mobilansicht geprüft, ohne horizontales Seiten-Overflow.
+- Versionsabfragen umgehen den Cache und haben ein Zeitlimit von fünf Sekunden.
+  Ein Abfragefehler wird sichtbar angezeigt, statt einen erfolgreichen Backend-Check
+  vorzutäuschen. Ein Versionsfehler verhindert nicht das Öffnen des Terminals.
+- Automatisierte Tests prüfen konfigurierte URLs, unabhängige Versionsanzeigen,
+  Fehlerfälle und den HTTP-Endpunkt inklusive CORS-Allowlist und gesperrter Pfade:
+
+```bash
+python3 -B -m unittest discover -s scripts/tests -v
+node --test scripts/tests/frontend.test.cjs
+```
+
+Node.js ist nur für diese JavaScript-Tests erforderlich, nicht für das Frontend
+selbst. Die lokalen Python-Webserver sind Versuchswerkzeuge, keine Empfehlung für
+den öffentlichen Produktionsbetrieb. **Teil 4 (Release-Assets) und AWS wurden noch
+nicht umgesetzt.**

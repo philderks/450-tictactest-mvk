@@ -36,6 +36,16 @@ Das fertige JAR der neuesten Version liegt unter [Releases](https://github.com/p
 java -jar tictactest-<version>.jar
 ```
 
+### Im Browser spielen (lokaler Versuch)
+
+Das unveränderte Release-Jar läuft über `ttyd` in einer Web-Konsole. Das statische
+Frontend in [`frontend/`](frontend/) bettet sie ein und zeigt Backend- und
+Frontend-Version an; es benötigt weder Framework noch Build-Schritt.
+
+Startbefehle, `config.js` und die CORS-Freigabe für getrennte Ports sind in
+[docs/webkonsole.md](docs/webkonsole.md#teil-3--statisches-frontend) beschrieben.
+Dies ist noch kein AWS-Deployment.
+
 ## Build
 
 ```bash
