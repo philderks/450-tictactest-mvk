@@ -4,9 +4,9 @@ Diese Dokumentation begleitet Auftrag 1 schrittweise. Die praktischen Versuche a
 Teil 1 sind durchgeführt. Teil 2 ist ebenfalls umgesetzt: Die Version wird aus dem
 Release-Jar ausgelesen und ist per HTTP abrufbar. Teil 3 ergänzt das statische
 Frontend mit konfigurierbaren Adressen und beiden Versionsanzeigen. Teil 4 ist
-implementiert und mit lokalen Kandidaten-Artefakten geprüft; Veröffentlichung und
-erneuter Test der echten GitHub-Release-Assets stehen noch aus. Die
-Cloud-Infrastruktur gehört erst zu Auftrag 2.
+ebenfalls abgeschlossen: v1.1.0 wurde veröffentlicht und die frisch heruntergeladenen
+Release-Assets wurden ohne Git-Checkout im Browser geprüft. Die Cloud-Infrastruktur
+gehört erst zu Auftrag 2 und ist noch nicht eingerichtet.
 
 ## Teil 1 – Werkzeug und Funktionsweise
 
@@ -409,7 +409,7 @@ AWS ist noch nicht eingerichtet.
 
 ## Teil 4 – Release um Web-Assets erweitern
 
-Die Implementierung bereitet Version **1.1.0** vor. Der bestehende Release-Workflow
+Die Erweiterung ist als Version **1.1.0** veröffentlicht. Der bestehende Release-Workflow
 behält Tag-Trigger, Versionsprüfung, Main-Ancestry-Check, Java-Tests, Build und
 Jar-Smoke-Test bei. Neu prüft er auch Frontend und Runtime-Werkzeuge und lädt neben
 dem Jar zwei ZIP-Dateien hoch, alle drei Artefakte mit eigener SHA-256-Prüfsumme.
@@ -459,10 +459,39 @@ Zusätzlich bestanden 10 Python-Tests und 3 JavaScript-Tests; `actionlint` prüf
 die geänderten Workflows ohne Befund. Die CI enthält einen eigenen `web-checks`-Job,
 damit die neuen Prüfungen auch bei Branch-Pushes laufen.
 
-**Noch offen:** Der Kandidat wurde lokal gebaut, nicht von GitHub heruntergeladen.
-Für den verpflichtenden echten Release-Test muss der geprüfte Stand zuerst über
-`dev` nach `main` gelangen, danach als `v1.1.0` veröffentlicht und erneut aus den
-heruntergeladenen Assets gestartet werden. Dazu wird vor Push/PR beziehungsweise
-Main-Merge die Freigabe für die abweichende Reihenfolge eingeholt. Bis dahin ist
-Teil 4 ausdrücklich **nicht vollständig abgeschlossen**; es wurde kein Tag
-veröffentlicht und der Main-Check nicht umgangen.
+### Abschlussnachweis mit veröffentlichten Assets
+
+Am **17. November 2026** wurde nach ausdrücklicher Freigabe zuerst
+[PR #11 nach dev](https://github.com/philderks/450-tictactest-mvk/pull/11) und danach
+[PR #12 nach main](https://github.com/philderks/450-tictactest-mvk/pull/12) gemergt.
+CI und Coverage Gate waren grün; der Main-Ancestry-Check blieb unverändert aktiv.
+
+- Annotierter Tag: `v1.1.0`, Commit `1ea23ba075fce9cc9ea09061ee0e272b2f63a45b`.
+- [Veröffentlichter Release](https://github.com/philderks/450-tictactest-mvk/releases/tag/v1.1.0),
+  kein Draft und kein Prerelease; Release-ID `448542770`.
+- [Release-Lauf 44075124349](https://github.com/philderks/450-tictactest-mvk/actions/runs/44075124349)
+  erfolgreich; auch die CI auf dem Main-Merge war erfolgreich.
+- Alle **sechs** veröffentlichten Assets in einen neuen, leeren Ordner ausserhalb
+  des Checkouts heruntergeladen. Die drei mitgelieferten Prüfsummen und zusätzlich
+  die sechs Asset-Digests aus der GitHub-API stimmten mit den Downloads überein.
+- Nur die heruntergeladenen ZIPs entpackt und deren eigene Runtime-Werkzeuge
+  gestartet. Keine Anwendungsdatei aus dem Checkout und kein erneuter Build waren
+  für das Starten nötig. Lediglich die öffentliche `config.js` wurde angepasst.
+- Im echten Browser zeigten Backend und Frontend **1.1.0**. Die Partie im iframe
+  wurde mit `4`, `2`, `6` gewonnen; die empfangene Terminal-Ausgabe enthielt
+  `...and the winner is: CROSS`.
+- Das veröffentlichte Jar wurde nach dem Spielen erneut gegen seine unveränderte
+  Prüfsumme geprüft. Seine SHA-256 lautet:
+
+```text
+5d7ce03c167f39484506eda7d6325f5e280200231ba8fa4a2246567fc0bd1c0f
+```
+
+Der bestehende private Vorschauzugang wurde danach auf genau diese heruntergeladenen
+Release-Assets umgestellt und erneut im Browser geprüft: beide Versionen 1.1.0,
+Terminal-Eingabe funktioniert. Die Hermes-Oberfläche blieb unverändert, kein Funnel
+wurde aktiviert. Das ist weiterhin ein lokaler/tailnet-interner Versuch, kein
+AWS-Deployment und noch keine Deployment-Automatisierung aus Auftrag 3.
+
+**Auftrag 1 ist damit vollständig verifiziert. Als Nächstes folgt Auftrag 2:**
+die bestehende OpenTofu-/EC2-Konfiguration prüfen, erweitern und von Hand deployen.

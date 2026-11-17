@@ -253,6 +253,11 @@ Promotion per PR nach `main` → Tag → Release-Lauf → Assets erneut herunter
 testen. Der bestehende Main-Ancestry-Check wird dafür nicht abgeschwächt. Solange
 der echte Release-Test fehlt, bleibt Teil 4 als noch nicht vollständig verifiziert markiert.
 
+Der Abschlussnachweis für v1.1.0 mit frisch heruntergeladenen Assets ist in
+[docs/webkonsole.md](docs/webkonsole.md#abschlussnachweis-mit-veröffentlichten-assets)
+festgehalten. Der veröffentlichte Tag bleibt unverändert; die nachträgliche
+Prüfdokumentation wird als eigener Commit über die normalen PRs übernommen.
+
 ## Wie entsteht aus einem Stand des Repositorys eine veröffentlichte Version?
 
 - **Nachvollziehbar:** Der Tag `vX.Y.Z` zeigt unveränderlich auf einen Commit. Der Release nennt diesen Commit,
