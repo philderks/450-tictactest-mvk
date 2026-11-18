@@ -18,7 +18,7 @@ behandelt das gleich versionierte Handout für Lernende.
 5. **Abschluss:** State, Git-Regeln, Kostenkontrolle und den CI/CD-Ausblick erklären;
    Testressourcen nach abgesprochener Freigabe entfernen und das Ergebnis prüfen.
 
-Erst danach folgt Webapp-Auftrag 2: Die Grundlage für den Betrieb und das manuelle
+Darauf baut Webapp-Auftrag 2 auf: Die Grundlage für den Betrieb und das manuelle
 Deployment der veröffentlichten TicTacTest-Artefakte erweitern. Anwendung und
 Infrastruktur bleiben getrennt; ein Release ist keine Infrastruktur-Neuerstellung.
 
@@ -68,10 +68,14 @@ Infrastruktur bleiben getrennt; ein Release ist keine Infrastruktur-Neuerstellun
 - Ein anschliessender `plan -detailed-exitcode` endete mit Exitcode `0`:
   keine Infrastrukturänderungen. State, lokale Variablen und Plan-Dateien sind
   mit Modus `0600` geschützt und von Git ausgeschlossen.
+- Die erste manuelle EC2-Deployment-Etappe ist separat nachgewiesen:
+  [TicTacTest v1.1.0 auf EC2](../docs/deployment.md). Die veröffentlichte Webapp
+  ist installiert und über den privaten Administrationszugang spielbar; dafür
+  wurden weder die Security Group geöffnet noch weitere AWS-Ressourcen erstellt.
 - **Noch offen:** kontrolliertes Aufräumen nach separater Freigabe sowie die
-  übrige Grundlagenreflexion. Die Instanz läuft derzeit; die Webapp ist dort
-  noch nicht installiert. Der vollständige IaC-Lernauftrag ist noch nicht als
-  abgeschlossen zu betrachten.
+  übrige Grundlagenreflexion. Die Instanz läuft derzeit und verursacht Kosten.
+  Der vollständige IaC-Lernauftrag und der vollständige Webapp-Auftrag 2 sind
+  noch nicht als abgeschlossen zu betrachten.
 
 ## Erste Konfigurationsbasis: Provider und Variable
 
