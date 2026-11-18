@@ -1,0 +1,34 @@
+# Lokale Provider und Arbeitsdaten
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+crash.log
+crash.*.log
+
+# Lokale Variablen und gespeicherte Plaene koennen vertrauliche Werte enthalten.
+*.tfvars
+*.tfvars.json
+*.tfplan
+*.plan
+plan.json
+
+# Lokale Overrides nicht versehentlich versionieren.
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Zugangsdaten und SSH-Schluessel gehoeren ausserhalb des Repositorys.
+.aws/
+.ssh/
+*.pem
+*.key
+id_rsa*
+id_ecdsa*
+id_ed25519*
+.env
+.env.*
+!.env.example
+
+# .terraform.lock.hcl und bereinigte *.tfvars.example bewusst NICHT ignorieren.
