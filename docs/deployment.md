@@ -388,3 +388,152 @@ extern verwaltet. Seine Rechte ersetzen nicht die weitere Dienstabsicherung.
 Für den vollständigen Auftrag 2 bleiben automatische Ersteinrichtung aus IaC,
 ein zweiter Release sowie die vorgeschriebenen Session-/Wiederaufbau-Experimente
 offen. Sie wurden in diesem begrenzten Profil-Schritt nicht vorweggenommen.
+
+## Automatische Erststartdefinition aus IaC — 23. November 2026
+
+`infra/bootstrap.tf` rendert `bootstrap/user-data.sh.tftpl` aus genau den vier
+bestehenden Runtime-Dateien. Der Bash-Wrapper legt root-eigene Dateien unter
+`/usr/local/share/tictactest-bootstrap` an und führt den versionsgebundenen
+Installer aus. Weder Release-Nummer noch Jar-/Frontend-Download gehören in
+`user_data`; der anschliessende manuelle Release-Deploy bleibt unabhängig.
+Der tatsächlich mit OpenTofu gerenderte Inhalt umfasst **8.041 Bytes** und
+passt in das 16-KiB-Limit; die Dateien bleiben beim Einbetten byte-identisch.
+
+```bash
+tofu -chdir=infra fmt -check
+tofu -chdir=infra validate
+python3 -B -m unittest discover -s infra/tests -v
+printf 'jsonencode(local.bootstrap_user_data)\n' | \
+  AWS_PROFILE=tictactest-lab tofu -chdir=infra console -no-color
+umask 077
+AWS_PROFILE=tictactest-lab tofu -chdir=infra plan -input=false -no-color \
+  -out=.terraform/bootstrap.tfplan
+tofu -chdir=infra show -json .terraform/bootstrap.tfplan \
+  > infra/.terraform/bootstrap-plan.json
+# Geprüft: nur aws_instance.server in-place, nur user_data ändert sich.
+# public_ip/public_dns sind nach Stop/Start berechnete unbekannte Attribute;
+# EIP, Zuordnung, SSH-Key, Security Group und Instance Profile bleiben gleich.
+AWS_PROFILE=tictactest-lab tofu -chdir=infra apply -input=false -no-color \
+  .terraform/bootstrap.tfplan
+ssh "${SSH_OPTIONS[@]}" "ec2-user@$HOST" \
+  'sudo cloud-init status --wait --long; test ! -d /usr/local/share/tictactest-bootstrap && echo FIRST_BOOT_NOT_RERUN; cat /proc/sys/kernel/random/boot_id; systemctl is-enabled tictactest-console tictactest-web; readlink -f /opt/tictactest/current; sha256sum /opt/tictactest/current/*.jar'
+curl -fsS "$(tofu -chdir=infra output -raw frontend_url)version.txt"
+curl -fsS "$(tofu -chdir=infra output -raw backend_version_url)"
+AWS_PROFILE=tictactest-lab tofu -chdir=infra plan -input=false -no-color -detailed-exitcode
+```
+
+**Beobachtung am vorhandenen Host:** Apply **0 hinzugefügt, 1 geändert,
+0 gelöscht**. EC2 wurde gestoppt/gestartet, nicht ersetzt; Instance-ID und
+Elastic IP bleiben gleich. Der neue Boot begann um **14:45 UTC**. Beide
+Dienste starten mit unverändertem Jar-Hash und Release `1.1.0`; auch eine neue
+öffentliche Browserpartie mit `4`, `2`, `6` endet mit CROSS als Gewinner.
+Der Folgeplan liefert Exitcode **0**. 27 Infrastruktur-, 10 Support- und
+3 Frontendtests bestehen.
+
+**Wichtige Grenze:** `user_data_replace_on_change = false` verhindert die
+Neuerstellung, aber nicht den Stop/Start bei einer User-Data-Änderung. cloud-init
+führt das Erststartskript auf diesem bestehenden Host nicht erneut aus; der
+Bootstrap-Stagingordner bleibt hier deshalb noch abwesend. Das AWS-Attribut
+enthält dennoch nachweislich exakt den gerenderten Inhalt. Ein No-op-Plan
+beweist also nicht, dass eine neue Erststartkonfiguration auf einen bestehenden
+Host angewendet wurde. Der echte Erststartnachweis bleibt bis zum freigegebenen
+Wiederaufbau-Test offen; kein `cloud-init clean` oder verstecktes Redeployment.
+
+## Architekturentscheidungen und Schnittstellen
+
+**Artefakte:** Die EC2 lädt die ausdrücklich gewählte Version direkt vom
+öffentlichen GitHub-Release. Dadurch bleiben Jar und beide Archive prüfbar und
+es braucht weder einen zusätzlichen Artefakt-Bucket noch einen GitHub-Token
+auf EC2. Alle drei Prüfsummen werden vor dem Entpacken geprüft. Bei einem
+privaten Repository müsste der Zugriff separat autorisiert werden, etwa durch
+einen privaten Artefaktspeicher mit den tatsächlich verfügbaren Rollenrechten;
+ein Token in `user_data` oder `config.js` ist keine Lösung.
+
+**Versionswahl:** `release.env` und der `current`-Symlink liegen auf der
+Instanzdisk. Ein normaler Stop/Start behält diese Auswahl. Ein zerstörter Host
+verliert sie: Nach dem Wiederaufbau muss dieselbe Versionsnummer bewusst erneut
+an den Deployer übergeben werden. Die Infrastruktur lädt weder «latest» noch
+beim Booten irgendeinen Applikationsrelease.
+
+**Öffentliche Frontend-Konfiguration:** Das Deployment schreibt `config.js`
+*nach* dem Entpacken des Frontend-Archivs. Die Infrastruktur stellt über nginx
+die gleichnamigen relativen Routen `/console/` und `/backend-version.txt`
+bereit; eine umgebungsspezifische Hostadresse steht nicht im App-Code. Damit
+bleibt die Konfiguration auch nach einem Frontend-Update richtig. Es braucht
+keinen S3-Website-Bucket, weil derselbe nginx die statischen Dateien öffentlich
+ausliefert. Öffentlich werden nur die erlaubten Frontend-Dateien ausgeliefert,
+nicht Jar, Runtime, State, Credentials oder private Konfigurationsdateien.
+
+**Outputs und Vertraulichkeit:** Spiel-/Console-/Versions-URL, öffentliche IP,
+Instanz-ID, EIP-Allocation-ID und Profil-/Rollenname sind Schnittstellen für
+Bedienung und spätere Pipeline, keine Zugangsdaten. Sie werden trotzdem nicht
+unnötig als feste Umgebungswerte in den Quellcode geschrieben. Private Schlüssel,
+AWS-Credentials und Session Tokens bleiben ausserhalb von Git; State, tfvars
+und gespeicherte Pläne werden ebenfalls privat gehalten, nicht öffentlich
+gehostet. Die SSH-Public-Key-Registrierung enthält keinen privaten Schlüssel.
+
+**SSH gegenüber SSM:** Manuell ist der vorhandene, streng hostgeprüfte
+SSH-/SCP-Zugang unmittelbar nachvollziehbar. Dafür müssen privater Schlüssel,
+`known_hosts` und die erlaubte Quelladresse verfügbar sein. Gehostete
+GitHub-Runner haben nicht automatisch dieselbe feste SSH-Quelladresse wie der
+Administrationshost; deshalb wird Port 22 nicht für das gesamte Internet
+geöffnet. SSM wäre für die Pipeline ohne eingehenden SSH-Zugang möglich,
+benötigt aber einen erreichbaren Agenten und nachgewiesene Send-/Leserechte
+für ihre AWS-Identität. Das als online gelesene SSM allein ist kein Nachweis
+für diese Rechte. Im Learner Lab müssen ausserdem Ablauf und Erneuerung der
+temporären Credentials berücksichtigt werden. Die konkrete Automatisierung
+gehört zu Auftrag 3, nicht zu diesem manuellen Deployment.
+
+## Dienstabsturz wirklich prüfen — 23. November 2026
+
+Zusätzlich zur Konfiguration wurde der laufende Console-Hauptprozess gezielt
+mit SIGKILL beendet. systemd startete ihn ohne manuellen `start` erneut;
+Boot und nginx-Prozess blieben unverändert, derselbe Release `1.1.0` bestand
+den vollständigen Routen-/Listener-Healthcheck. Der Test ist eine bewusste
+Unterbrechung laufender Spielverbindungen, keine Datenmigration:
+
+```bash
+ssh "${SSH_OPTIONS[@]}" "ec2-user@$HOST" \
+  'sudo systemctl kill --kill-who=main --signal=SIGKILL tictactest-console.service'
+sleep 4
+ssh "${SSH_OPTIONS[@]}" "ec2-user@$HOST" \
+  'systemctl is-active tictactest-console.service tictactest-web.service'
+ssh "${SSH_OPTIONS[@]}" "ec2-user@$HOST" \
+  'sudo python3 -B -c "import runpy; runpy.run_path(\"/home/ec2-user/tictactest-admin/scripts/deploy-release.py\")[\"wait_healthy\"](\"1.1.0\")"'
+```
+
+## Robustheit: tatsächlicher Lab-Sessionwechsel — 23. November 2026
+
+Nach der EIP-/HTTP-Einrichtung wurde die Learner-Lab-Session bereits beendet
+und vom Nutzer neu gestartet. Dieser tatsächliche Wechsel ist nun auch
+technisch nachvollzogen, bevor eine weitere Infrastrukturänderung erfolgt:
+
+- EC2 meldet den erneuten Start am **23. November 2026 um 13:11:11 UTC**;
+  das Gast-Journal beginnt den neuen Boot um **13:11:15 UTC**. Es enthält auch
+  den vorherigen Boot, dessen letzte Einträge von **11:51 UTC** stammen.
+- Dieselbe Instanz und dieselbe Elastic IP sind weiterhin zugeordnet. An der
+  Spieladresse, den Firewallregeln und dem App-Deployment wurde für die
+  Wiederherstellung nichts repariert.
+- Beide systemd-Dienste laufen automatisch. `/opt/tictactest/current` zeigt
+  weiterhin auf `releases/1.1.0`, beide öffentlichen Versionen sind `1.1.0`.
+  Der Jar-Hash ist unverändert `5d7ce03c167f39484506eda7d6325f5e280200231ba8fa4a2246567fc0bd1c0f`.
+- Der vom Nutzer gesicherte öffentliche Spiel-Screenshot von **14:13 UTC**
+  zeigt beide Versionen und eine abgeschlossene Partie. Die zusätzlichen
+  rein lesenden Prüfungen um **14:32–14:37 UTC** bestätigen den Zustand.
+
+Die Kontrolle wiederholt keinen künstlichen Sessionwechsel und misst keine
+Ausfallzeit; sie dokumentiert den wirklich erfolgten Wechsel. Die Belege
+liegen privat unter `~/.local/share/tictactest-iac/evidence/`.
+
+```bash
+HOST="$(tofu -chdir=infra output -raw public_ip)"
+INSTANCE_ID="$(tofu -chdir=infra output -raw instance_id)"
+aws --profile tictactest-lab --region us-east-1 --no-cli-pager \
+  ec2 describe-instances --instance-ids "$INSTANCE_ID" \
+  --query 'Reservations[0].Instances[0].{Id:InstanceId,LaunchTime:LaunchTime,Ip:PublicIpAddress,State:State.Name}' \
+  --output json
+ssh "${SSH_OPTIONS[@]}" "ec2-user@$HOST" \
+  'date -u; uptime -s; sudo journalctl --list-boots --no-pager; readlink -f /opt/tictactest/current; sha256sum /opt/tictactest/current/*.jar; systemctl is-active tictactest-console tictactest-web'
+curl -fsS "$(tofu -chdir=infra output -raw frontend_url)version.txt"
+curl -fsS "$(tofu -chdir=infra output -raw backend_version_url)"
+```

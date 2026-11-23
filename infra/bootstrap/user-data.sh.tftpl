@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 022
+bootstrap_dir=/usr/local/share/tictactest-bootstrap
+install -d -o root -g root -m 0755 "$bootstrap_dir"
+printf '%s' '${install_runtime_b64}' | base64 --decode > "$bootstrap_dir/install-runtime.sh"
+printf '%s' '${nginx_conf_b64}' | base64 --decode > "$bootstrap_dir/nginx.conf"
+printf '%s' '${console_unit_b64}' | base64 --decode > "$bootstrap_dir/tictactest-console.service"
+printf '%s' '${web_unit_b64}' | base64 --decode > "$bootstrap_dir/tictactest-web.service"
+bash "$bootstrap_dir/install-runtime.sh"
