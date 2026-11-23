@@ -92,6 +92,10 @@ resource "aws_instance" "server" {
   associate_public_ip_address = true
   iam_instance_profile        = data.aws_iam_instance_profile.lab.name
 
+  # User-data changes use stop/start, but cloud-init runs this only on first boot.
+  user_data                   = local.bootstrap_user_data
+  user_data_replace_on_change = false
+
   # Kleine, verschluesselte Systemdisk; beim Loeschen der Instanz mit entfernen.
   root_block_device {
     volume_size           = 8
