@@ -60,6 +60,15 @@ resource "aws_security_group" "ssh" {
     cidr_blocks = [var.ssh_allowed_cidr]
   }
 
+  # Oeffentliches HTTP nur zum Frontend/Proxy; ttyd bleibt intern.
+  ingress {
+    description = "Public HTTP for the TicTacTest frontend and console proxy"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   # Ausgehende Verbindungen fuer Betriebssystem-Updates erlauben.
   egress {
     from_port   = 0

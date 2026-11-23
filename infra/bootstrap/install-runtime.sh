@@ -37,4 +37,4 @@ for unit in tictactest-console.service tictactest-web.service; do
 done
 systemctl daemon-reload
 systemctl enable tictactest-console.service tictactest-web.service
-echo 'Runtime installed; deploy a release separately to start the loopback-only services.'
+echo 'Runtime installed; deploy a release separately to start HTTP frontend and loopback console.'

@@ -43,7 +43,7 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertNotIn("--now tictactest", text)
         self.assertIn("--shell /sbin/nologin", text)
 
-    def test_services_are_unprivileged_and_loopback_only(self):
+    def test_services_are_unprivileged_with_private_console(self):
         self.assertTrue((BOOTSTRAP / "tictactest-console.service").exists(), "console unit missing")
         self.assertTrue((BOOTSTRAP / "tictactest-web.service").exists(), "web unit missing")
         console = (BOOTSTRAP / "tictactest-console.service").read_text()
@@ -61,6 +61,8 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertIn("/usr/local/bin/ttyd -W -O -i 127.0.0.1 -p 7681 -m 4 -b /console /usr/bin/java -Xmx64m -jar ${JAR_PATH}", console)
         self.assertNotIn("/bin/sh", console)
         self.assertIn("RuntimeDirectory=tictactest-web", web)
+        self.assertIn("CapabilityBoundingSet=CAP_NET_BIND_SERVICE", web)
+        self.assertIn("AmbientCapabilities=CAP_NET_BIND_SERVICE", web)
         self.assertIn("/usr/sbin/nginx -e stderr -c /etc/tictactest/nginx.conf", web)
 
     def test_proxy_preserves_console_prefix_and_separate_version_routes(self):
@@ -75,7 +77,10 @@ class RuntimeConfigTests(unittest.TestCase):
                           "pid /run/tictactest-web/nginx.pid;", "error_log stderr;",
                           "access_log /run/tictactest-web/access.log;"):
             self.assertIn(directive, config)
-        self.assertNotIn("listen 80;", config)
+        self.assertEqual(
+            {line.strip() for line in config.splitlines() if line.strip().startswith("listen ")},
+            {"listen 0.0.0.0:80;", "listen 127.0.0.1:8080;"},
+        )
         self.assertNotIn("location = /version.txt", config)
         for kind in ("client_body", "proxy", "fastcgi", "uwsgi", "scgi"):
             self.assertIn(f"{kind}_temp_path /run/tictactest-web/", config)
@@ -272,26 +277,29 @@ class ReleaseDeployTests(unittest.TestCase):
             return result
         opener = mock.Mock()
         opener.open.side_effect = response
-        with mock.patch.object(module.urllib.request, "build_opener", return_value=opener), mock.patch.object(module, "systemctl"), mock.patch.object(module, "check_private_listeners") as listeners:
+        with mock.patch.object(module.urllib.request, "build_opener", return_value=opener), mock.patch.object(module, "systemctl"), mock.patch.object(module, "check_application_listeners") as listeners:
             module.wait_healthy("1.1.0")
         listeners.assert_called_once_with()
         self.assertEqual(seen, ["http://127.0.0.1:8080" + route for route in ("/", "/version.txt", "/backend-version.txt", "/console/")])
 
-    def test_deployment_rejects_non_loopback_or_missing_listeners(self):
-        self.assertTrue(hasattr(self.deploy, "check_private_listeners"),
-                        "Health checks must verify real listener addresses, not just HTTP")
+    def test_deployment_rejects_exposed_backends_or_missing_public_http(self):
+        self.assertTrue(hasattr(self.deploy, "check_application_listeners"),
+                        "Health checks must verify the public proxy and private backends")
+        private = "LISTEN 0 128 127.0.0.1:7681 0.0.0.0:*\nLISTEN 0 511 127.0.0.1:8080 0.0.0.0:*\n"
+        public = "LISTEN 0 511 0.0.0.0:80 0.0.0.0:*\n"
         for output in (
-            "LISTEN 0 128 0.0.0.0:7681 0.0.0.0:*\nLISTEN 0 511 127.0.0.1:8080 0.0.0.0:*\n",
-            "LISTEN 0 128 [::]:7681 [::]:*\nLISTEN 0 511 127.0.0.1:8080 0.0.0.0:*\n",
-            "LISTEN 0 511 127.0.0.1:8080 0.0.0.0:*\n",
+            private,
+            private.replace("127.0.0.1:7681", "0.0.0.0:7681") + public,
+            private.replace("127.0.0.1:7681", "[::]:7681") + public,
+            private.replace("127.0.0.1:8080", "0.0.0.0:8080") + public,
+            public,
         ):
             with self.subTest(output=output), mock.patch.object(
                 self.deploy.subprocess, "run", return_value=mock.Mock(stdout=output)
             ), self.assertRaisesRegex(ValueError, "loopback"):
-                self.deploy.check_private_listeners()
-        safe = "LISTEN 0 128 127.0.0.1:7681 0.0.0.0:*\nLISTEN 0 511 127.0.0.1:8080 0.0.0.0:*\n"
-        with mock.patch.object(self.deploy.subprocess, "run", return_value=mock.Mock(stdout=safe)):
-            self.deploy.check_private_listeners()
+                self.deploy.check_application_listeners()
+        with mock.patch.object(self.deploy.subprocess, "run", return_value=mock.Mock(stdout=private + public)):
+            self.deploy.check_application_listeners()
 
     def test_deployment_helper_uses_python39_syntax(self):
         ast.parse(DEPLOY.read_text(), feature_version=(3, 9))

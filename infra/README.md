@@ -72,10 +72,133 @@ Infrastruktur bleiben getrennt; ein Release ist keine Infrastruktur-Neuerstellun
   [TicTacTest v1.1.0 auf EC2](../docs/deployment.md). Die veröffentlichte Webapp
   ist installiert und über den privaten Administrationszugang spielbar; dafür
   wurden weder die Security Group geöffnet noch weitere AWS-Ressourcen erstellt.
+- Die feste Adresse aus Auftrag 2, Teil 1 ist am 23. November 2026 ergänzt:
+  `elastic-ip.tf` verwaltet eine Elastic IP und ihre Zuordnung zur bestehenden
+  Instanz. Die EC2 wurde nicht ersetzt; ein anschliessender Plan ist ein No-op.
+  `public_ip` liefert jetzt die Elastic IP, `elastic_ip_allocation_id` ihre ID.
+- Nach ausdrücklicher Freigabe ist auch der HTTP-Zugang öffentlich: nginx
+  lauscht auf Port 80, ttyd und der Administrationslistener bleiben auf Loopback.
+  Nur TCP/80 wurde zusätzlich in derselben Security Group erlaubt; SSH bleibt
+  auf den Administrationshost beschränkt. `frontend_url`, `console_url` und
+  `backend_version_url` liefern die öffentlichen HTTP-Adressen. TLS ist offen.
 - **Noch offen:** kontrolliertes Aufräumen nach separater Freigabe sowie die
   übrige Grundlagenreflexion. Die Instanz läuft derzeit und verursacht Kosten.
   Der vollständige IaC-Lernauftrag und der vollständige Webapp-Auftrag 2 sind
   noch nicht als abgeschlossen zu betrachten.
+
+## Auftrag 2, Teil 1: feste Adresse — 23. November 2026
+
+Beim nächsten Start der Lab-Instanz war die automatisch zugeteilte öffentliche
+IPv4 anders. Die Dienste und das unveränderte Release `1.1.0` liefen bereits
+wieder, aber der private SSH-Tunnel zeigte noch auf die vorherige Adresse.
+
+Diese kleine Erweiterung behebt die wechselnde Zieladresse:
+
+- `aws_eip.server` reserviert eine IPv4 im VPC-Bereich des Kontos.
+- `aws_eip_association.server` ordnet sie der bestehenden `aws_instance.server`
+  zu. `allow_reassociation = false` verhindert eine unbeabsichtigte Übernahme
+  einer bereits anders zugeordneten Adresse.
+- `public_ip` bezieht seinen Wert jetzt aus `aws_eip.server.public_ip` und
+  hängt zusätzlich von der abgeschlossenen Zuordnung ab.
+- `elastic_ip_allocation_id` liefert die Allocation-ID für Diagnose und Betrieb.
+
+Instanz, AMI, Disk, SSH-Key und Security Group wurden dabei nicht geändert.
+`associate_public_ip_address` an der bestehenden Instanz wurde bewusst nicht
+umgestellt; ein unnötiger Instanzersatz wäre kein akzeptabler Weg zur festen IP.
+In dieser EIP-Etappe blieben die Listener auf Loopback und der Browserzugang
+noch privat. Der danach freigegebene öffentliche HTTP-Schritt ist unten und
+in `docs/deployment.md` separat dokumentiert.
+
+Vom Repository-Hauptverzeichnis wurden diese Schritte tatsächlich ausgeführt:
+
+```bash
+tofu -chdir=infra fmt -check
+tofu -chdir=infra validate
+python3 -B -m unittest discover -s infra/tests -v
+
+# Plan und JSON bleiben unter dem ignorierten Provider-/Arbeitsverzeichnis.
+umask 077
+AWS_PROFILE=tictactest-lab tofu -chdir=infra plan -input=false \
+  -out=.terraform/elastic-ip.tfplan
+tofu -chdir=infra show -json .terraform/elastic-ip.tfplan \
+  > infra/.terraform/elastic-ip-plan.json
+
+# Erst nach Prüfung: nur EIP und Zuordnung neu, bisherige Ressourcen alle no-op.
+AWS_PROFILE=tictactest-lab tofu -chdir=infra apply -input=false \
+  .terraform/elastic-ip.tfplan
+tofu -chdir=infra output -raw public_ip
+tofu -chdir=infra output -raw elastic_ip_allocation_id
+AWS_PROFILE=tictactest-lab tofu -chdir=infra plan -input=false -detailed-exitcode
+```
+
+Ergebnis: **2 hinzugefügt, 0 geändert, 0 gelöscht**; der anschliessende Plan
+endete mit Exitcode `0`. AWS bestätigt die Zuordnung zur selben Instanz und
+Netzwerkschnittstelle. SSH wurde gegen den schon vertrauten Hostschlüssel
+geprüft, der Tunnel auf die feste Adresse umgestellt und danach eine vollständige
+Browserpartie gewonnen. Beide Versionen bleiben `1.1.0`, der Jar-Hash unverändert.
+Alle 20 lokalen Infrastruktur-/Runtime-Tests bestanden.
+
+Der ursprüngliche `tests/check_plan.py` ist weiterhin ein historischer Checker
+für den **ersten Drei-Ressourcen-Plan** des Grundauftrags. Nicht auf diesen
+EIP-Erweiterungsplan oder auf einen No-op anwenden; beim EIP-Plan wurden die
+beiden Creates und alle drei bestehenden No-op-Ressourcen separat aus dem
+realen Plan-JSON geprüft.
+
+Vor dem Apply wurde der State ausserhalb von Git mit Modus `0600` gesichert;
+nach erfolgreicher Prüfung wurde auch die aktuelle Momentaufnahme aktualisiert.
+Konkrete IPs, Allocation-/Association-IDs, Plan-JSON und Nachweise bleiben in
+lokalen Betriebsdateien, nicht im öffentlichen Quellcode.
+
+**Lebenszyklus und Kosten:** Eine Elastic IP bleibt beim normalen Stop/Start
+reserviert und zugeordnet. Ein erneuter Lab-Session-Wechsel mit dieser EIP wurde
+noch nicht als eigenes Experiment durchgeführt. Wird die EIP freigegeben oder
+mit `tofu destroy` gelöscht, ist dieselbe Adresse bei einem späteren Apply nicht
+garantiert. Öffentliche IPv4-Adressen sind kostenpflichtig, auch wenn die
+zugeordnete Instanz gestoppt ist; die Reservierung später ausdrücklich mit
+aufräumen. Kein Stop/Start- oder Destroy-Experiment wurde hier vorweggenommen.
+
+Referenzen: AWS EC2 User Guide, «Elastic IP addresses» und «Amazon VPC pricing»:
+<https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/elastic-ip-addresses-eip.html>,
+<https://aws.amazon.com/vpc/pricing/>.
+
+## Auftrag 2: öffentlicher HTTP-Zugang — 23. November 2026
+
+Nach ausdrücklicher Zustimmung zum öffentlichen, unverschlüsselten Zugriff wurde
+nur die bestehende Security Group in-place um **IPv4 TCP/80 von `0.0.0.0/0`**
+ergänzt. Der historische Ressourcen-/Gruppenname mit `ssh` und die bisherige
+Beschreibung bleiben erhalten, damit keine unnötige Ersatzressource entsteht.
+Die tatsächlichen einzelnen Port-Regeln sind massgeblich: SSH bleibt auf die
+Administrations-IP beschränkt; Port 7681, 8080 und 443 sind nicht freigegeben.
+
+`bootstrap/nginx.conf` lauscht zusätzlich auf `0.0.0.0:80`. Das statische Frontend,
+die Versionsabfrage und der WebSocket-Proxy bleiben im selben Origin. Der
+bisherige private Listener `127.0.0.1:8080` bleibt für Administration erhalten,
+ttyd weiterhin nur auf `127.0.0.1:7681`.
+
+Der Webdienst bleibt `User=tictactest`. Nur diese Unit erhält
+`CapabilityBoundingSet=CAP_NET_BIND_SERVICE` und
+`AmbientCapabilities=CAP_NET_BIND_SERVICE`, damit Port 80 ohne root-Prozess
+gebunden werden kann. `NoNewPrivileges` und das übrige Hardening bleiben aktiv;
+die Java-/ttyd-Unit erhält diese Capability ausdrücklich nicht.
+
+Der aktuelle Deployment-Healthcheck heisst `check_application_listeners` und
+erwartet exakt den öffentlichen HTTP-Listener plus die beiden privaten
+Listener. Er akzeptiert insbesondere keine öffentliche ttyd-/Admin-Bindung.
+
+Der geprüfte gespeicherte Plan unter `.terraform/public-http.tfplan` wurde
+angewendet: **0 hinzugefügt, 1 geändert, 0 gelöscht**. Alle anderen verwalteten
+Ressourcen blieben unverändert. AWS-Regeln, tatsächliche Listener, Dienst-UID und
+effektive Capability wurden danach zurückgelesen. Von ausserhalb der EC2 waren
+Port 80 und beide Versionen erreichbar, 7681/8080 nicht; interne Release-/Config-
+Pfade lieferten 404. Eine vollständige Partie im isolierten Chromium über die
+öffentliche HTTP-Adresse endete mit einem CROSS-Sieg. Der nachfolgende Plan
+ist ein No-op; 21 lokale Infrastruktur-/Runtime-Tests bestanden.
+
+Die manuellen Installations- und Apply-Befehle stehen in `docs/deployment.md`.
+Die bestehende EC2, Elastic IP, Release-Version und private HTTPS-Vorschau
+wurden nicht ersetzt. Keine S3-, IAM-, TLS- oder Deployment-Pipeline-Änderung
+ist in diesem Schritt enthalten. Erstkonfiguration über IaC, Instance Profile,
+zweiter Release und die übrigen Robustheitsexperimente sind weiter offen.
 
 ## Erste Konfigurationsbasis: Provider und Variable
 

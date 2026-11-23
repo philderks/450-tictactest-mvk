@@ -1,5 +1,10 @@
 # Manuelles TicTacTest-Deployment auf EC2
 
+**Aktueller Stand (23. November 2026):** Frontend und Spiel sind nach expliziter
+Freigabe öffentlich per HTTP über die Elastic IP erreichbar. Die Adresse steht
+in `tofu -chdir=infra output -raw frontend_url`; HTTPS ist noch nicht eingerichtet.
+Die frühere private Etappe bleibt unten als historischer Nachweis erhalten.
+
 ## Einordnung und bewusste Grenze
 
 Dies ist die erste manuelle EC2-Deployment-Etappe aus Webapp-Auftrag 2, nicht
@@ -170,8 +175,128 @@ Ressourcen noch Pakete auf EC2 und deployt nichts.
   Deployment-Healthcheck prüft nun die tatsächlichen Socketadressen und weist
   Wildcard- oder fehlende Listener zurück. Die AWS-Firewall wurde nicht geöffnet.
 
-Für den vollständigen Auftrag 2 bleiben zusätzlich feste IP, Instance Profile,
-öffentliche Frontend-Auslieferung und entsprechende Outputs, ein zweiter
-Release sowie die vorgeschriebenen Session-/Wiederaufbau-Experimente offen.
-Keine dieser offenen Anforderungen wird durch einen einzelnen erfolgreichen
-EC2-Deploy als erledigt markiert.
+## Auftrag 2, Teil 1: feste Adresse ergänzt — 23. November 2026
+
+Die bestehende EC2 hat jetzt eine durch OpenTofu verwaltete Elastic IP. Ergänzt
+wurden nur `aws_eip.server` und `aws_eip_association.server`; weder die Instanz
+noch die Firewall wurden ersetzt oder erweitert. Die ausführbaren Plan-/Apply-
+Befehle und die Begründung stehen im [IaC-Nachweis](../infra/README.md#auftrag-2-teil-1-feste-adresse--23-november-2026).
+
+Das Deployment erhält die feste Adresse über diese Schnittstelle, nicht über
+eine im Skript hinterlegte IP:
+
+```bash
+tofu -chdir=infra output -raw public_ip
+tofu -chdir=infra output -raw elastic_ip_allocation_id
+```
+
+Nach dem Apply wurde die Zuordnung über AWS zurückgelesen, der eigene SSH-Tunnel
+auf die feste Adresse umgestellt und die bestehende private HTTPS-Route wieder
+geprüft. Browserpartie mit `4`, `2`, `6`: CROSS gewinnt; beide Versionen bleiben
+`1.1.0`. Der anschliessende OpenTofu-Plan meldet keine Änderungen.
+Ein Session-Neustart **nach dieser EIP-Zuordnung** ist noch als gesondertes
+Robustheitsexperiment offen. Der heutige erfolgreiche Autostart vor der
+EIP-Ergänzung beweist nicht bereits diesen nächsten Test.
+
+## Öffentlicher HTTP-Zugang — 23. November 2026
+
+Dieser separat freigegebene Schritt macht denselben Release über die Elastic IP
+spielbar, ohne Tailscale oder SSH-Tunnel im Browserpfad. Das Frontend bleibt auf
+der EC2: kein zusätzlicher Bucket und kein neuer Applikationsrelease. Die drei
+öffentlichen URLs kommen aus OpenTofu:
+
+```bash
+tofu -chdir=infra output -raw frontend_url
+tofu -chdir=infra output -raw console_url
+tofu -chdir=infra output -raw backend_version_url
+```
+
+### Laufzeit aktualisieren, bevor die Firewall geöffnet wird
+
+`HOST` und `SSH_OPTIONS` wie oben setzen. Die folgenden Befehle dokumentieren
+die tatsächlich angewendeten Schritte; der bisherige Dienstzustand wurde vor
+jedem Ersetzen gesichert:
+
+```bash
+HOST="$(tofu -chdir=infra output -raw public_ip)"
+ssh "${SSH_OPTIONS[@]}" "ec2-user@$HOST" \
+  'mkdir -p "$HOME/tictactest-admin/public-http-new"'
+scp "${SSH_OPTIONS[@]}" infra/bootstrap/nginx.conf \
+  infra/bootstrap/tictactest-web.service infra/scripts/deploy-release.py \
+  "ec2-user@$HOST:tictactest-admin/public-http-new/"
+
+ssh "${SSH_OPTIONS[@]}" "ec2-user@$HOST" 'bash -s' <<'REMOTE'
+set -eu
+stage=/home/ec2-user/tictactest-admin/public-http-new
+backup="/var/lib/tictactest-admin-backups/public-http-$(date -u +%Y%m%dT%H%M%SZ)"
+sudo install -d -m 0700 "$backup"
+sudo cp -p /etc/tictactest/nginx.conf "$backup/nginx.conf"
+sudo cp -p /etc/systemd/system/tictactest-web.service "$backup/tictactest-web.service"
+sudo cp -p /home/ec2-user/tictactest-admin/scripts/deploy-release.py "$backup/deploy-release.py"
+sudo /usr/sbin/nginx -t -e stderr -c "$stage/nginx.conf"
+sudo systemd-analyze verify "$stage/tictactest-web.service"
+rollback() {
+  sudo cp -p "$backup/nginx.conf" /etc/tictactest/nginx.conf
+  sudo cp -p "$backup/tictactest-web.service" /etc/systemd/system/tictactest-web.service
+  sudo cp -p "$backup/deploy-release.py" /home/ec2-user/tictactest-admin/scripts/deploy-release.py
+  sudo systemctl daemon-reload
+  sudo systemctl restart tictactest-web.service
+}
+trap 'rollback' ERR
+sudo install -o root -g root -m 0644 "$stage/nginx.conf" /etc/tictactest/nginx.conf
+sudo install -o root -g root -m 0644 "$stage/tictactest-web.service" /etc/systemd/system/tictactest-web.service
+sudo install -o root -g root -m 0644 "$stage/deploy-release.py" /home/ec2-user/tictactest-admin/scripts/deploy-release.py
+sudo systemctl daemon-reload
+sudo systemctl restart tictactest-web.service
+curl --retry 5 --retry-connrefused --retry-delay 1 --max-time 10 -fsS http://127.0.0.1/backend-version.txt
+sudo python3 -B -c "import runpy; m=runpy.run_path('/home/ec2-user/tictactest-admin/scripts/deploy-release.py'); m['wait_healthy']('1.1.0')"
+trap - ERR
+REMOTE
+```
+
+nginx bindet Port 80 mit der einzigen zusätzlichen Capability
+`CAP_NET_BIND_SERVICE`; UID bleibt `tictactest` und `NoNewPrivileges` aktiv.
+Die Console-Unit und ihr laufender Prozess wurden dabei nicht neu gestartet.
+Die beiden Loopback-Ports bleiben bestehen und der angepasste Healthcheck
+verlangt exakt diese beiden privaten Listener plus öffentliches HTTP.
+
+### Nur die HTTP-Freigabe anwenden und von aussen prüfen
+
+```bash
+umask 077
+AWS_PROFILE=tictactest-lab tofu -chdir=infra plan -input=false \
+  -out=.terraform/public-http.tfplan
+tofu -chdir=infra show -json .terraform/public-http.tfplan \
+  > infra/.terraform/public-http-plan.json
+# Plan prüfen: nur aws_security_group.ssh in-place, nur TCP/80 ergänzen.
+AWS_PROFILE=tictactest-lab tofu -chdir=infra apply -input=false \
+  .terraform/public-http.tfplan
+curl -fsS "$(tofu -chdir=infra output -raw frontend_url)version.txt"
+curl -fsS "$(tofu -chdir=infra output -raw backend_version_url)"
+AWS_PROFILE=tictactest-lab tofu -chdir=infra plan -input=false -detailed-exitcode
+```
+
+Ergebnis: **0 hinzugefügt, 1 geändert, 0 gelöscht**, danach No-op mit Exitcode 0.
+Die AWS-API bestätigt nur TCP/80 für alle IPv4-Adressen und die unveränderte
+SSH-Einzeladresse. Von ausserhalb der EC2 ist Port 80 erreichbar, 7681/8080 nicht.
+Release-Jar, Runtime-Skripte, `.git` und `release.env` werden nicht ausgeliefert;
+die geprüften entsprechenden URLs geben 404 zurück. Öffentlich ist nur der
+Frontend-Inhalt einschliesslich seiner absichtlich öffentlichen `config.js`.
+
+Eine echte Browserpartie über öffentliches HTTP/WebSocket wurde mit `4`, `2`,
+`6` gewonnen; Frontend und Backend melden `1.1.0`. Der Desktop-Testbrowser
+schrieb HTTP zunächst auf HTTPS um und blockierte clientseitig; der vollständige
+Spielnachweis wurde deshalb in einem separaten Chromium-Testprofil ohne diese
+Upgrade-Einstellung erbracht. Keine globalen Browser-Sicherheitseinstellungen
+wurden geändert. Screenshot und Terminalmitschnitt liegen wie zuvor ausserhalb
+von Git. Die private HTTPS-Vorschau funktioniert zusätzlich weiter.
+
+**Bewusste Grenze:** öffentliches HTTP, noch kein TLS, keine Anmeldung. Hier
+keine Zugangsdaten eingeben. `ttyd -O`, direkter Java-Aufruf und das Limit von
+vier Spielverbindungen bleiben aktiv. Alle 21 lokalen Infrastruktur-/Runtime-
+Tests bestanden; Java-Spiel und veröffentlichte Release-Artefakte sind unverändert.
+
+Für den vollständigen Auftrag 2 bleiben Instance Profile, automatische
+Ersteinrichtung aus IaC, ein zweiter Release sowie die vorgeschriebenen
+Session-/Wiederaufbau-Experimente offen. Diese Anforderungen werden nicht durch
+die HTTP-Freigabe als erledigt markiert.

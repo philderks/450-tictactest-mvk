@@ -1,5 +1,5 @@
 [Unit]
-Description=TicTacTest frontend and console proxy (loopback only)
+Description=TicTacTest HTTP frontend and private console proxy
 After=network.target tictactest-console.service
 Wants=tictactest-console.service
 ConditionPathExists=/etc/tictactest/release.env
@@ -21,7 +21,8 @@ ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
-CapabilityBoundingSet=
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 Restart=on-failure
 RestartSec=3

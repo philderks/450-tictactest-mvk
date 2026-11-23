@@ -89,14 +89,14 @@ def switch_current(target):
         temporary.unlink(missing_ok=True)
 
 
-def check_private_listeners():
+def check_application_listeners():
     result = subprocess.run(
-        ["ss", "-H", "-lnt", "( sport = :7681 or sport = :8080 )"],
+        ["ss", "-H", "-lnt", "( sport = :80 or sport = :7681 or sport = :8080 )"],
         check=True, capture_output=True, text=True,
     )
     addresses = {line.split()[3] for line in result.stdout.splitlines() if line.strip()}
-    if addresses != {"127.0.0.1:7681", "127.0.0.1:8080"}:
-        raise ValueError("Expected loopback-only application listeners; got " + str(sorted(addresses)))
+    if addresses != {"0.0.0.0:80", "127.0.0.1:7681", "127.0.0.1:8080"}:
+        raise ValueError("Expected public HTTP and loopback-only backends; got " + str(sorted(addresses)))
 
 
 def wait_healthy(version):
@@ -106,7 +106,7 @@ def wait_healthy(version):
     for _ in range(30):
         try:
             systemctl("is-active", "--quiet", *UNITS)
-            check_private_listeners()
+            check_application_listeners()
             for route in ("/", "/version.txt", "/backend-version.txt", "/console/"):
                 with opener.open("http://127.0.0.1:8080" + route, timeout=2) as response:
                     body = response.read()
