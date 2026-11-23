@@ -1,9 +1,11 @@
 # Manuelles TicTacTest-Deployment auf EC2
 
-**Aktueller Stand (23. November 2026):** Frontend und Spiel sind nach expliziter
-Freigabe öffentlich per HTTP über die Elastic IP erreichbar. Die Adresse steht
-in `tofu -chdir=infra output -raw frontend_url`; HTTPS ist noch nicht eingerichtet.
-Die frühere private Etappe bleibt unten als historischer Nachweis erhalten.
+**Aktueller Stand (23. November 2026):** Auftrag 2 ist technisch abgenommen:
+Release `1.2.0` läuft öffentlich auf der vollständig neu aufgebauten EC2 und
+übersteht deren Neustart. Die aktuelle Adresse liefert
+`tofu -chdir=infra output -raw frontend_url`; sie änderte sich beim destroy/apply.
+HTTP ist ausdrücklich freigegeben, HTTPS noch nicht eingerichtet. Die frühen
+Abschnitte sind historische Zwischenstände; die abschliessende Abnahme steht unten.
 
 ## Einordnung und bewusste Grenze
 
@@ -537,3 +539,205 @@ ssh "${SSH_OPTIONS[@]}" "ec2-user@$HOST" \
 curl -fsS "$(tofu -chdir=infra output -raw frontend_url)version.txt"
 curl -fsS "$(tofu -chdir=infra output -raw backend_version_url)"
 ```
+
+## Release B ohne Infrastrukturänderung — 23. November 2026
+
+Release A war `v1.1.0`. Release B ist **`v1.2.0`**, mit einem sichtbaren blauen
+Akzent für Titel, Links und Feldnummern. Die Spiellogik ist unverändert.
+Feature-PR **#18** wurde nach Tests in `dev`, die ausdrücklich freigegebene
+Promotion **#19** nach grüner CI und Coverage Gate in `main` gemergt.
+Der neue annotierte Tag zeigt auf `ce8586372128ba7040748598eb5c3c227c292536`;
+alle bisherigen Tags bleiben unverändert. Der Release-Lauf **45200072905**
+veröffentlichte Release **455577145** mit genau sechs Assets: Jar, Frontend-
+und Runtime-ZIP sowie jeweils eine Prüfsummendatei.
+
+| Veröffentlichtes Artefakt | SHA-256 |
+|---|---|
+| `tictactest-1.2.0.jar` | `b4f35b35a65b01db4181ea22e1d1185785d7fdd6488ba9c7380a1ed673e74cdf` |
+| `tictactest-frontend-1.2.0.zip` | `7528a9ff88e6921a398b9b1f2da2ca817b41425a5a26fb2d3b8c9949e1f93406` |
+| `tictactest-runtime-1.2.0.zip` | `b1f64f80c881387dd7c7f5ad3e4ba535d894efa41f001d4ca71c7aa2f1f80adc` |
+
+Die Veröffentlichung erfolgte wie in [RELEASE.md](../RELEASE.md) über einen
+neuen Tag, nicht durch Verschieben eines alten Tags. Anschliessend wurde nur
+dieser manuelle Deploymentbefehl auf der bestehenden Instanz ausgeführt:
+
+```bash
+HOST="$(tofu -chdir=infra output -raw public_ip)"
+ssh "${SSH_OPTIONS[@]}" "ec2-user@$HOST" \
+  'sudo bash /home/ec2-user/tictactest-admin/scripts/deploy-release.sh 1.2.0'
+curl -fsS "$(tofu -chdir=infra output -raw frontend_url)version.txt"
+curl -fsS "$(tofu -chdir=infra output -raw backend_version_url)"
+AWS_PROFILE=tictactest-lab tofu -chdir=infra plan -input=false -no-color -detailed-exitcode
+```
+
+**Ergebnis um 15:01 UTC:** beide Versionen `1.2.0`, echte öffentliche Partie
+mit CROSS gewonnen, blaue Darstellung im Screenshot überprüft. Instance-ID,
+EIP, AWS-Startzeit und Gast-Boot-ID bleiben gleich. Der installierte Jar-Hash
+entspricht dem veröffentlichten Asset-Digest. Der Folgeplan ist **Exitcode 0**.
+Für diesen Release-Deploy gab es **kein `tofu apply`**, keinen Hostersatz und
+keinen Build auf EC2. Der vorherige lokale Build war nur ein getesteter
+Release-Kandidat, nicht das deployte Artefakt.
+
+## Einrichtung ändern: neue Dienstvariable — 23. November 2026
+
+Nach dem abgeschlossenen Release-B-Nachweis wurde in der Console-Unit
+`Environment=TICTACTEST_ENV=lab` ergänzt. Das ist eine bewusst beobachtbare
+Infrastruktureinstellung, keine Applikationsversion und kein Secret.
+Die vorher fehlende Einstellung wurde zuerst durch einen roten Test erkannt;
+nach der Ergänzung bestehen **28 Infrastrukturtests**.
+
+```bash
+AWS_PROFILE=tictactest-lab tofu -chdir=infra plan -input=false -no-color \
+  -out=.terraform/environment.tfplan
+tofu -chdir=infra show -json .terraform/environment.tfplan \
+  > infra/.terraform/environment-plan.json
+# Prüfen: nur user_data der bisherigen EC2; EIP/SG/Key/Profile bleiben gleich.
+AWS_PROFILE=tictactest-lab tofu -chdir=infra apply -input=false -no-color \
+  .terraform/environment.tfplan
+ssh "${SSH_OPTIONS[@]}" "ec2-user@$HOST" \
+  'sudo cloud-init status --wait --long; systemctl show tictactest-console.service -p Environment --value; readlink -f /opt/tictactest/current; cat /proc/sys/kernel/random/boot_id'
+AWS_PROFILE=tictactest-lab tofu -chdir=infra plan -input=false -no-color -detailed-exitcode
+```
+
+**Beobachtung um 15:05 UTC:** wiederum **0 hinzugefügt, 1 geändert, 0 gelöscht**.
+Dieselbe EC2 und EIP, neuer Gast-Boot, unveränderte Version `1.2.0` mit identischem
+Jar. Die vorhandene Unit enthält die neue Variable **noch nicht**, obwohl die
+aktualisierte User Data gespeichert und der Folgeplan leer ist. cloud-init ist
+keine dauerhafte Konfigurationsverwaltung: Erststartskripte laufen standardmässig
+nur einmal. Für eine Änderung am bestehenden Host wäre ein ausdrücklich
+ausgeführtes Konfigurations-Update nötig; hier wird stattdessen im nächsten
+Pflichttest frisch aufgebaut. Mit `user_data_replace_on_change = true` würde
+der Provider die Instanz ersetzen statt nur stoppen/starten. Auch dann müsste
+das Deployment die gewünschte App-Version wieder auswählen.
+
+## Vollständig löschen und wieder aufbauen — 23. November 2026
+
+Dieser destruktive Test wurde **gesondert freigegeben**. Vorher wurden privater
+State, Versionswahl `1.2.0`, Asset-Digests, aktuelle Outputs und ein geprüftes
+Fallback-Archiv der App-/Dienstkonfiguration ausserhalb von Git gesichert.
+Der private SSH-Schlüssel blieb unverändert auf dem Administrationshost.
+Das Archiv war ein Sicherheitsnetz und wurde **nicht** zur App-Wiederherstellung
+verwendet: Dafür wurden erneut die veröffentlichten Release-Assets geladen.
+
+Der konkrete Löschplan wurde vor Ausführung auf genau fünf eigene Ressourcen
+geprüft: EC2 samt löschbarer Systemdisk, EIP, EIP-Zuordnung, SSH-Public-Key-
+Registrierung und Security Group. IAM-Profil/Rolle, Standard-VPC und Subnetz
+sind nur Datenquellen und werden nicht gelöscht. Der private SSH-Tunnel wurde
+vorher gestoppt, damit er nicht zu einer freigegebenen alten IP weiterverbindet.
+
+```bash
+umask 077
+# Äquivalent zu tofu destroy, aber mit vorher geprüftem gespeicherten Plan.
+AWS_PROFILE=tictactest-lab tofu -chdir=infra plan -destroy -input=false -no-color \
+  -out=.terraform/robustness-destroy.tfplan
+tofu -chdir=infra show -json .terraform/robustness-destroy.tfplan \
+  > infra/.terraform/robustness-destroy-plan.json
+# Erst nach eigener Prüfung und ausdrücklicher Freigabe ausführen:
+sudo systemctl stop tictactest-ec2-tunnel@phil.service
+AWS_PROFILE=tictactest-lab tofu -chdir=infra apply -input=false -no-color \
+  .terraform/robustness-destroy.tfplan
+```
+
+**Löschnachweis:** **5 gelöscht**, verwalteter State leer; AWS bestätigt alte
+EC2 `terminated` und alte EIP/SG/Key-Registrierung nicht mehr vorhanden.
+Dasselbe `LabInstanceProfile` mit `LabRole` bleibt bestehen. Anschliessend:
+
+```bash
+AWS_PROFILE=tictactest-lab tofu -chdir=infra plan -input=false -no-color \
+  -out=.terraform/robustness-rebuild.tfplan
+tofu -chdir=infra show -json .terraform/robustness-rebuild.tfplan \
+  > infra/.terraform/robustness-rebuild-plan.json
+# Prüfen: genau fünf Creates, dieselbe AMI/micro-Klasse, VPC/Subnetz/Profile,
+# gleicher Public Key; verschlüsselte 8 GiB, IMDSv2, Standard-CPU-Credits,
+# ausschliesslich HTTP und SSH vom aktuellen Administrator-/32.
+AWS_PROFILE=tictactest-lab tofu -chdir=infra apply -input=false -no-color \
+  .terraform/robustness-rebuild.tfplan
+HOST="$(tofu -chdir=infra output -raw public_ip)"
+INSTANCE_ID="$(tofu -chdir=infra output -raw instance_id)"
+aws --profile tictactest-lab --region us-east-1 --no-cli-pager \
+  ec2 get-console-output --instance-id "$INSTANCE_ID" --latest --output json
+# Neuen Ed25519-Hostschlüssel gegen diesen authentifizierten Console-Fingerprint
+# prüfen und erst dann known_hosts aktualisieren; siehe infra/README.md.
+ssh "${SSH_OPTIONS[@]}" "ec2-user@$HOST" \
+  'sudo cloud-init status --wait --long; systemctl is-enabled tictactest-console tictactest-web; systemctl show tictactest-console.service -p Environment --value'
+```
+
+**Echter Erststart:** **5 erstellt**. cloud-init war um **15:11 UTC** fertig.
+Ohne manuelles Runtime-Setup waren Corretto/nginx in den festgelegten
+RPM-Versionen und ttyd mit der festgelegten Prüfsumme installiert; Benutzer
+`tictactest` war ein Nicht-Login-Konto. Beide App-Dienste waren aktiviert und
+`TICTACTEST_ENV=lab` jetzt automatisch installiert. Alle vier eingebetteten
+Dateien stimmen byte-identisch mit den Quellen überein; der aktuelle Render
+umfasst **8.081 Bytes**. Vor dem Deployment gab es ausdrücklich **weder
+`release.env` noch `current`**, und beide App-Dienste waren inaktiv: Runtime
+vorhanden bedeutet nicht, dass eine App-Version gewählt ist.
+
+Nur die zwei versionskontrollierten **Betriebswerkzeuge**, kein App-Checkout,
+wurden kopiert. Danach lief wieder exakt derselbe Release:
+
+```bash
+ssh "${SSH_OPTIONS[@]}" "ec2-user@$HOST" \
+  'mkdir -p /home/ec2-user/tictactest-admin/scripts'
+scp "${SSH_OPTIONS[@]}" infra/scripts/deploy-release.sh infra/scripts/deploy-release.py \
+  "ec2-user@$HOST:tictactest-admin/scripts/"
+ssh "${SSH_OPTIONS[@]}" "ec2-user@$HOST" \
+  'sudo bash /home/ec2-user/tictactest-admin/scripts/deploy-release.sh 1.2.0'
+curl -fsS "$(tofu -chdir=infra output -raw frontend_url)version.txt"
+curl -fsS "$(tofu -chdir=infra output -raw backend_version_url)"
+```
+
+| Wert | Nach destroy/apply tatsächlich beobachtet |
+|---|---|
+| Instance-ID, Rootvolume, SG-ID, Key-Pair-ID | Neu; Key-Name und Fingerprint bleiben gleich |
+| EIP-Allocation/-Association und öffentliche Spiel-URL | Neu; die alte Adresse wurde freigegeben |
+| Private IP und Gast-Boot-ID | Neu |
+| AMI, Instanzklasse, Standard-VPC/Subnetz, Lab-Profil/Rolle | Gleich |
+| App-Version und Jar-Hash nach manuellem Restore | Wieder exakt `1.2.0` / veröffentlichter Digest |
+| Inhalt der früheren Instanzdisk | Nicht vorhanden; Release-Auswahl musste erneut gesetzt werden |
+
+Eine EIP bleibt bei Stop/Start fest, nicht nach absichtlichem Löschen ihrer
+Allocation. Deshalb Adressen immer aus Outputs beziehen. Der neue Host-Key
+wurde über AWS verifiziert, nicht blind akzeptiert. Der private Tunnel wurde
+auf genau die neue Adresse umgestellt und öffentliches sowie privates HTTP
+erneut geprüft; sonstige Tailscale-Routen blieben unangetastet. **Nie die alte
+State-Sicherung über den erfolgreichen neuen State kopieren:** Sie beschreibt
+gelöschte AWS-IDs und ist nur ein datierter Nachweis/Sicherungsstand.
+
+## Abschliessende Abnahme Auftrag 2
+
+Der frisch aufgebaute Host wurde nach dem Restore zusätzlich per EC2-API
+neugestartet. Um **15:16 UTC** liefen beide Dienste automatisch mit derselben
+Version `1.2.0`, neuem Gast-Boot und unverändertem Jar-Hash wieder an:
+
+```bash
+aws --profile tictactest-lab --region us-east-1 --no-cli-pager \
+  ec2 reboot-instances --instance-ids "$INSTANCE_ID"
+# Auf den neuen Gast-Boot und aktive Dienste warten, nicht nur API-Rückgabe prüfen.
+curl -fsS "$(tofu -chdir=infra output -raw frontend_url)version.txt"
+curl -fsS "$(tofu -chdir=infra output -raw backend_version_url)"
+AWS_PROFILE=tictactest-lab tofu -chdir=infra plan -input=false -no-color -detailed-exitcode
+```
+
+- [x] Feste öffentliche Adresse über tatsächlichen Lab-Sessionwechsel geprüft.
+- [x] Automatischer frischer Bootstrap mit festen Paket-/ttyd-Versionen und Prüfsumme.
+- [x] Nicht-root-Dienste, automatischer Wiederanlauf nach SIGKILL und Boot.
+- [x] Profilidentität auf **neuer** EC2 erneut durch echten STS-Aufruf ohne lokale Credentials belegt.
+- [x] Öffentlich nur TCP/80; TCP/22 nur Administrator-/32. 7681/8080 von aussen gesperrt.
+- [x] Console ohne Capability, nginx nur `CAP_NET_BIND_SERVICE`, beide `NoNewPrivileges`.
+- [x] Frontend öffentlich, Konfiguration nach Entpacken erzeugt, keine feste App-Hostadresse.
+- [x] Alle benötigten URLs, Instanz-/EIP-/Profilinformationen als Outputs.
+- [x] Release A und B manuell aus veröffentlichten Assets deployt; B ohne Apply/Hostersatz.
+- [x] Session-, Konfigurations- und tatsächlicher destroy/apply-Test dokumentiert.
+- [x] Finale echte Browserpartie mit CROSS gewonnen, beide Versionen `1.2.0`.
+- [x] Finaler OpenTofu-Plan **Exitcode 0**, keine Änderungen; privater Zugang funktioniert ebenfalls.
+
+Ausgehender Verkehr bleibt für Paketquellen, GitHub und AWS/SSM freigegeben;
+dies ist keine Egress-/Hostnamen-Allowlist. Die bewusst vereinbarten Grenzen
+bleiben: HTTP ohne TLS/Login, maximal vier Console-Verbindungen, begrenzter
+Java-Heap statt behaupteter harter Gesamt-RAM-Grenze; kein Last-/Sicherheitsaudit.
+Das optionale S3-Spielprotokoll wurde nicht umgesetzt. Der aktuelle Lab-Budgetwert
+wurde nicht angegeben und wird hier nicht erfunden. Für Auftrag 3 laufen wieder
+eine micro-Instanz und ihre EIP; der Budgetverbrauch geht weiter. Screenshots,
+API-/Terminalnachweise und private Sicherungen liegen ausserhalb von Git unter
+`~/.local/share/tictactest-iac/evidence/`. Auftrag 3 ist damit vorbereitet, aber
+seine automatisierte Deployment-Pipeline ist noch nicht implementiert.
