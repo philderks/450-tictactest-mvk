@@ -27,8 +27,9 @@ jobs:
       - name: Test frontend, metadata and release packaging
         run: |
           python3 -B -m unittest discover -s scripts/tests -v
+          python3 -B -m unittest discover -s infra/tests -v
           node --test scripts/tests/frontend.test.cjs
-          bash -n scripts/start-console.sh
+          bash -n scripts/start-console.sh infra/bootstrap/install-runtime.sh infra/scripts/deploy-release.sh
 
   build:
     runs-on: ubuntu-latest
