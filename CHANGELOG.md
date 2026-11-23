@@ -6,6 +6,15 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionsnu
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-23
+
+### Added
+- Reproduzierbare EC2-Laufzeit mit versionsgebundenem Erststart-Bootstrap, unprivilegierten systemd-Diensten und geprüftem manuellem Release-Deployment.
+- Öffentliches Frontend über eine feste Elastic IP sowie Zuordnung des vorhandenen Learner-Lab-Instance-Profils ohne eigene IAM-Rollen.
+
+### Changed
+- Ein gemeinsamer blauer Akzent für Titel, Links und Feldnummern macht Release B im Frontend sichtbar; Spielregeln und Java-Spiellogik bleiben unverändert.
+
 ## [1.1.0] - 2026-11-17
 
 ### Added
