@@ -90,6 +90,7 @@ resource "aws_instance" "server" {
   vpc_security_group_ids      = [aws_security_group.ssh.id]
   key_name                    = aws_key_pair.ssh.key_name
   associate_public_ip_address = true
+  iam_instance_profile        = data.aws_iam_instance_profile.lab.name
 
   # Kleine, verschluesselte Systemdisk; beim Loeschen der Instanz mit entfernen.
   root_block_device {
