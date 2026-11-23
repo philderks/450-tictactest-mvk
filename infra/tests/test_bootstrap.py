@@ -102,6 +102,10 @@ class BootstrapTests(unittest.TestCase):
         for forbidden in ("release.env", "/opt/tictactest/current", "releases/download", ".jar", "curl ", "wget "):
             self.assertNotIn(forbidden, template)
 
+    def test_console_has_explicit_lab_environment(self):
+        unit = (INFRA / "bootstrap/tictactest-console.service").read_text()
+        self.assertRegex(unit, r"(?m)^Environment=TICTACTEST_ENV=lab$")
+
     def test_instance_attaches_user_data_without_replacement_or_lifecycle_workarounds(self):
         main = (INFRA / "main.tf").read_text()
         instance = main.split('resource "aws_instance" "server" {', 1)[1]
