@@ -296,7 +296,95 @@ keine Zugangsdaten eingeben. `ttyd -O`, direkter Java-Aufruf und das Limit von
 vier Spielverbindungen bleiben aktiv. Alle 21 lokalen Infrastruktur-/Runtime-
 Tests bestanden; Java-Spiel und veröffentlichte Release-Artefakte sind unverändert.
 
-Für den vollständigen Auftrag 2 bleiben Instance Profile, automatische
-Ersteinrichtung aus IaC, ein zweiter Release sowie die vorgeschriebenen
-Session-/Wiederaufbau-Experimente offen. Diese Anforderungen werden nicht durch
-die HTTP-Freigabe als erledigt markiert.
+## Vorhandenes Instance Profile zuordnen — 23. November 2026
+
+`instance-profile.tf` liest `LabInstanceProfile` mit der vorhandenen `LabRole`.
+Die Instanz referenziert den Profilnamen; eigene IAM-Ressourcen werden nicht
+angelegt. Dieser Schritt verändert nicht die LabRole-Policies und wählt auch
+keinen neuen Applikationsrelease aus.
+
+```bash
+# Vorhandenes Profil zuerst lesen, keine IAM-Rolle erstellen.
+aws --profile tictactest-lab --region us-east-1 --no-cli-pager \
+  iam get-instance-profile --instance-profile-name LabInstanceProfile \
+  --query 'InstanceProfile.{Name:InstanceProfileName,Roles:Roles[].RoleName}'
+
+tofu -chdir=infra fmt -check
+tofu -chdir=infra validate
+python3 -B -m unittest discover -s infra/tests -v
+umask 077
+AWS_PROFILE=tictactest-lab tofu -chdir=infra plan -input=false \
+  -out=.terraform/instance-profile.tfplan
+tofu -chdir=infra show -json .terraform/instance-profile.tfplan \
+  > infra/.terraform/instance-profile-plan.json
+# Geprüft: nur iam_instance_profile an aws_instance.server ändert sich.
+AWS_PROFILE=tictactest-lab tofu -chdir=infra apply -input=false \
+  .terraform/instance-profile.tfplan
+
+INSTANCE_ID="$(tofu -chdir=infra output -raw instance_id)"
+aws --profile tictactest-lab --region us-east-1 --no-cli-pager \
+  ec2 describe-iam-instance-profile-associations \
+  --filters "Name=instance-id,Values=$INSTANCE_ID" \
+  --query 'IamInstanceProfileAssociations[].State'
+tofu -chdir=infra output -raw instance_profile_name
+tofu -chdir=infra output -raw instance_profile_role
+```
+
+Ergebnis: **0 hinzugefügt, 1 geändert, 0 gelöscht**, Zuordnung `associated`.
+Der JSON-Plan wurde vor dem Apply auf dieselbe Instanz-ID, ausschliesslich das
+Profilfeld und No-op aller anderen verwalteten Ressourcen geprüft. State-
+Sicherungen und konkrete IDs bleiben ausserhalb von Git.
+
+### Rollenidentität wirklich auf EC2 prüfen
+
+Der folgende Test verwendet absichtlich weder AWS-Umgebungs-Credentials noch
+lokale Credential-Dateien. Die auf EC2 bereits vorhandene AWS CLI muss die
+kurzlebigen Rollen-Credentials selbst aus den Instanzmetadaten beziehen.
+`HOST` und `SSH_OPTIONS` stammen aus dem SSH-Abschnitt oben:
+
+```bash
+HOST="$(tofu -chdir=infra output -raw public_ip)"
+INSTANCE_ID="$(tofu -chdir=infra output -raw instance_id)"
+ssh "${SSH_OPTIONS[@]}" "ec2-user@$HOST" python3 - "$INSTANCE_ID" <<'PY'
+import os, subprocess, json, sys, time
+env = {k: v for k, v in os.environ.items() if not k.startswith('AWS_')}
+env.update({
+    'AWS_CONFIG_FILE': '/dev/null',
+    'AWS_SHARED_CREDENTIALS_FILE': '/dev/null',
+    'BOTO_CONFIG': '/dev/null',
+    'AWS_EC2_METADATA_DISABLED': 'false',
+    'AWS_METADATA_SERVICE_TIMEOUT': '2',
+    'AWS_METADATA_SERVICE_NUM_ATTEMPTS': '2',
+    'AWS_PAGER': '',
+})
+command = ['/usr/bin/aws', '--region', 'us-east-1', '--no-cli-pager',
+           '--cli-connect-timeout', '5', '--cli-read-timeout', '10',
+           'sts', 'get-caller-identity', '--output', 'json']
+for attempt in range(12):
+    result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=25)
+    if result.returncode == 0:
+        break
+    time.sleep(2)
+assert result.returncode == 0, 'STS-Test fehlgeschlagen; keine Credentials ausgeben'
+identity = json.loads(result.stdout)
+assert identity['Arn'].split(':assumed-role/', 1)[1] == 'LabRole/' + sys.argv[1]
+print('PASS: LabRole mit Instanz-Session, ohne lokale Credential-Dateien')
+PY
+
+curl -fsS "$(tofu -chdir=infra output -raw backend_version_url)"
+AWS_PROFILE=tictactest-lab tofu -chdir=infra plan -input=false -detailed-exitcode
+```
+
+Die Prüfung war erfolgreich. Boot-ID, beide Dienst-PIDs, Jar-Hash und feste IP
+blieben gleich; beide Versionsanzeigen melden `1.1.0`. Die komplette öffentliche
+Browserpartie nach der Profilzuordnung wurde mit CROSS gewonnen. Der letzte
+Plan ist ein No-op mit Exitcode 0; 22 lokale Infrastruktur-/Runtime-Tests bestanden.
+
+**Nicht daraus ableiten:** Der STS-Test bestätigt die Rolle, nicht beliebige
+SSM-/S3-Berechtigungen. Access Keys oder Session Tokens wurden nicht auf den
+Server kopiert, ausgegeben oder committed. Das vorhandene Lab-Profil bleibt
+extern verwaltet. Seine Rechte ersetzen nicht die weitere Dienstabsicherung.
+
+Für den vollständigen Auftrag 2 bleiben automatische Ersteinrichtung aus IaC,
+ein zweiter Release sowie die vorgeschriebenen Session-/Wiederaufbau-Experimente
+offen. Sie wurden in diesem begrenzten Profil-Schritt nicht vorweggenommen.

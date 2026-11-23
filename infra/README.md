@@ -81,6 +81,10 @@ Infrastruktur bleiben getrennt; ein Release ist keine Infrastruktur-Neuerstellun
   Nur TCP/80 wurde zusätzlich in derselben Security Group erlaubt; SSH bleibt
   auf den Administrationshost beschränkt. `frontend_url`, `console_url` und
   `backend_version_url` liefern die öffentlichen HTTP-Adressen. TLS ist offen.
+- Das vorhandene `LabInstanceProfile` mit `LabRole` ist über eine `data`-Quelle
+  eingebunden und der bestehenden EC2 in-place zugeordnet. Ein echter STS-Aufruf
+  auf der EC2 bestätigt ihre Rollenidentität bei deaktivierten lokalen
+  Credential-Dateien; keine Access Keys wurden auf den Server kopiert.
 - **Noch offen:** kontrolliertes Aufräumen nach separater Freigabe sowie die
   übrige Grundlagenreflexion. Die Instanz läuft derzeit und verursacht Kosten.
   Der vollständige IaC-Lernauftrag und der vollständige Webapp-Auftrag 2 sind
@@ -197,8 +201,53 @@ ist ein No-op; 21 lokale Infrastruktur-/Runtime-Tests bestanden.
 Die manuellen Installations- und Apply-Befehle stehen in `docs/deployment.md`.
 Die bestehende EC2, Elastic IP, Release-Version und private HTTPS-Vorschau
 wurden nicht ersetzt. Keine S3-, IAM-, TLS- oder Deployment-Pipeline-Änderung
-ist in diesem Schritt enthalten. Erstkonfiguration über IaC, Instance Profile,
-zweiter Release und die übrigen Robustheitsexperimente sind weiter offen.
+ist in diesem Schritt enthalten. Damals blieben auch das Instance Profile,
+die Erstkonfiguration über IaC, der zweite Release und die übrigen
+Robustheitsexperimente offen. Der Profil-Schritt folgt im nächsten Abschnitt.
+
+## Auftrag 2: vorhandenes Instance Profile — 23. November 2026
+
+**Rolle und Profil sind nicht dasselbe:** Die vorhandene `LabRole` bestimmt die
+AWS-Berechtigungen. Das ebenfalls vorhandene `LabInstanceProfile` verbindet
+diese Rolle mit EC2. `instance-profile.tf` liest das Profil als
+`data.aws_iam_instance_profile.lab`; `aws_instance.server.iam_instance_profile`
+referenziert dessen Namen. Es werden keine IAM-Rollen, Policies oder Profile
+erstellt oder verändert. Das Lab bleibt für ihre Verwaltung verantwortlich.
+
+Neue Outputs `instance_profile_name` und `instance_profile_role` enthalten nur
+die Namen, keine Schlüssel oder Tokens. Die Anwendungsversion und der private
+SSH-Schlüssel haben mit diesen AWS-Berechtigungen nichts zu tun.
+
+Nach fehlgeschlagenem Offline-Vertragstest vor der Implementierung bestanden
+alle 22 Infrastruktur-/Runtime-Tests, `tofu fmt -check` und `tofu validate`.
+Der gespeicherte echte Plan wurde separat aus seinem JSON geprüft: ausschliesslich
+`iam_instance_profile` an derselben EC2 ändert sich; alle anderen Ressourcen
+bleiben No-op. Keine Ersetzung, keine Änderung an Disk, Netzwerk oder Elastic IP.
+
+Der genehmigte Apply ergab **0 hinzugefügt, 1 geändert, 0 gelöscht**. AWS meldet
+die Zuordnung als `associated`. Danach wurde auf der EC2 tatsächlich
+`sts get-caller-identity` ausgeführt: AWS-Umgebungs-Credentials wurden aus dem
+Testprozess entfernt und Shared-/Config-Dateien auf `/dev/null` gesetzt. Die
+zurückgegebene Rollenidentität entspricht `LabRole` mit der Instanz als Session.
+Der AWS-Client bezog die temporären Credentials automatisch über die
+Instanzmetadaten; wir haben sie weder angezeigt noch als Dateien hinterlegt.
+
+Boot-ID, Dienst-PIDs, Jar-SHA-256 und öffentliche IP waren vor/nach dem Apply
+gleich. Beide Versionen bleiben `1.1.0`; eine vollständige Browserpartie über
+die öffentliche HTTP-Adresse wurde erneut gewonnen. Der anschliessende Plan
+endet mit Exitcode `0`, keine Änderungen. Betriebsnachweise und gesicherter
+State liegen ausserhalb von Git. Befehle zum Nachvollziehen stehen in
+`docs/deployment.md`.
+
+**Grenze des Nachweises:** STS bestätigt die Identität, nicht beliebige S3-,
+SSM- oder sonstige AWS-Berechtigungen. Die Rechte stammen aus der vorgegebenen
+LabRole und wurden nicht erweitert. Ein kompromittierter Prozess auf der EC2
+könnte gegebenenfalls ebenfalls Rollen-Credentials beziehen; ein Instance
+Profile ersetzt nicht die weitere Absicherung des öffentlichen Diensts.
+
+Automatische Ersteinrichtung durch IaC, Release B und die übrigen
+Robustheitsexperimente bleiben weiter offen. Kein cloud-init-, S3-, SSM-, TLS-
+oder weiterer Deployment-Schritt wurde nebenbei implementiert.
 
 ## Erste Konfigurationsbasis: Provider und Variable
 

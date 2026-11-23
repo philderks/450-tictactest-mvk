@@ -3,6 +3,16 @@ output "instance_id" {
   value       = aws_instance.server.id
 }
 
+output "instance_profile_name" {
+  description = "Vorhandenes Learner-Lab-Profil der EC2, keine Zugangsdaten."
+  value       = data.aws_iam_instance_profile.lab.name
+}
+
+output "instance_profile_role" {
+  description = "Name der im vorhandenen Profil enthaltenen IAM-Rolle."
+  value       = data.aws_iam_instance_profile.lab.role_name
+}
+
 output "public_ip" {
   description = "Feste Elastic IPv4 fuer SSH; bleibt bei Stop/Start zugeordnet."
   value       = aws_eip.server.public_ip
