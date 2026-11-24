@@ -1,6 +1,6 @@
 # TicTacToe
 
-Ein kleines TicTacToe-Spiel in Java mit einem menschlichen Spieler (`HumanPlayer`) und einem einfachen Computer-Spieler (`GreedyPlayer`), der stets das erste freie Feld belegt.
+Ein kleines TicTacToe-Spiel in Java mit einem menschlichen Spieler (`HumanPlayer`) und einem Computer-Spieler (`PerfectPlayer`), der nie verliert. Der einfache `GreedyPlayer` (belegt stets das erste freie Feld) bleibt für Tests erhalten.
 
 ## Voraussetzungen
 

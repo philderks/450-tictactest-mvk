@@ -6,6 +6,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionsnu
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-24
+
+### Changed
+- Der Computer spielt in der Konsole neu mit dem `PerfectPlayer` und verliert nie. Das Frontend bleibt unverändert.
+
 ## [1.4.0] - 2026-11-24
 
 ### Changed
