@@ -15,6 +15,12 @@ public class TicTacToeMain {
 	public static final int BOARD_SIZE = 9;
 
 	public static void main(String[] args) {
+		// Absichtlich defekter Testrelease 1.5.1 (Auftrag 3, Teil 5): scheitert nur in einem
+		// echten Terminal, also erst auf dem Server. Mit 1.5.2 wieder entfernt.
+		var console = System.console();
+		if (console != null && console.isTerminal()) {
+			throw new IllegalStateException("deliberately broken test release 1.5.1");
+		}
 		try {
 			play(new HumanPlayer(), new PerfectPlayer());
 		} catch (NoSuchElementException e) {
