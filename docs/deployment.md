@@ -755,9 +755,8 @@ hat SSM-Befehlsausführung und Ergebnisabfrage mit einem echten reinen Lesebefeh
 nachgewiesen; siehe Abschnitt 11. Dies ist noch keine Deployment-Pipeline.
 Release `1.2.0` läuft unverändert. Das auf `main` beschränkte Environment samt
 drei Secrets und vier Variables ist nach gesonderter Freigabe eingerichtet;
-siehe Abschnitt 12. Der Deployworkflow ist geschrieben und lokal geprüft
-(Abschnitt 15), aber noch nicht auf `main` und noch nie auf einem Runner
-gelaufen; kein Pipeline-Deployment, Dienstneustart oder Apply ausgeführt.
+siehe Abschnitt 12. Der Deployworkflow ist auf `main` aktiv und die EC2 auf das
+getrennte Layout umgestellt; die echten Läufe stehen in Abschnitt 16.
 
 ### 1. Entscheidung: GitHub Actions steuert die EC2 über SSM
 
@@ -1396,8 +1395,8 @@ Deployment.
 
 ### 15. Deployworkflow `deploy.yml` — 24. November 2026
 
-**Stand:** Workflow und Runner-Skript sind geschrieben und lokal getestet. Er ist
-noch nicht auf `main`, ein echter Lauf auf einem GitHub-Runner steht aus.
+**Stand:** Workflow und Runner-Skript sind über PR #26 und #27 auf `main`. Dieser
+Abschnitt beschreibt den Aufbau und die lokalen Prüfungen, Abschnitt 16 die echten Läufe.
 
 ```text
 Tag vX.Y.Z -> Release (Tests, Build, Assets) -> erfolgreich
@@ -1459,8 +1458,26 @@ das Ziel sein. In beiden Fällen endet der Lauf rot mit Hinweis auf den manuelle
 - `actionlint` 1.7.12 meldet nur `queue` als unbekannt; der Schlüssel ist in der
   aktuellen GitHub-Doku beschrieben.[7]
 
-**Offen:** EC2 auf das getrennte Layout umstellen, `dev` nach `main`, erster echter
-Lauf und die Abnahmematrix aus Abschnitt 8.
+### 16. Echte Umstellung und Workflow-Läufe
+
+**EC2-Umstellung, 24. November 2026, 18:17 UTC:** Nach Sicherung von `nginx.conf`,
+`release.env` und Zeiger wurden nur der Symlink `frontend-current` auf den bestehenden
+Release `1.2.0` gesetzt und die neue `nginx.conf` geladen. Die Instanz und die Units
+blieben dieselben, die Console lief mit derselben PID weiter. Danach bestanden
+Healthcheck, echter JVM-Start und die öffentlichen Routen inklusive `split-v1`-Header.
+Dauer der Aktivierung: 0,8 s. Backup auf dem Host unter
+`/var/lib/tictactest-admin-backups/split-20261124T181749Z`. Kein `tofu apply`.
+
+| Versuch | Ergebnis | Beleg |
+|---|---|---|
+| Push/Merge auf `main` ohne Tag | Nur CI lief, der Deployworkflow hatte danach null Läufe | [CI-Lauf](https://github.com/philderks/450-tictactest-mvk/actions/runs/45458415850) |
+| Abgelaufene Credentials, manuell `v1.2.0` | `preflight` rot mit `ExpiredToken`, keine Anweisung gesendet, beide Versionen weiterhin `1.2.0`; keine Zugangsdaten im Log | [Deploy-Lauf](https://github.com/philderks/450-tictactest-mvk/actions/runs/45458716568) |
+
+Die Konto-ID steht als Variable sichtbar im öffentlichen Log. Sie ist kein
+Zugangsschlüssel; Secrets erscheinen nur maskiert als `***`.
+
+**Noch offen:** denselben Release nach Erneuerung der Secrets nachdeployen, danach
+Rollback, defekter Release, Wiederaufbau und die drei Release-Fälle aus Teil 6.
 
 ## Sources
 
