@@ -41,4 +41,13 @@ class HumanPlayerTest {
 						"where to put the next CROSS? (0-8): ",
 						"where to put the next CIRCLE? (0-8): ");
 	}
+
+	@Test
+	void play_rejectsOutOfRangeAndOccupiedFields_untilAFreeFieldIsChosen() {
+		var board = new Stone[TicTacToeMain.BOARD_SIZE];
+		board[0] = Stone.CIRCLE;
+		var input = new ByteArrayInputStream("-1\n9\n0\n8\n".getBytes(StandardCharsets.UTF_8));
+
+		assertThat(new HumanPlayer(input).play(board, Stone.CROSS)).isEqualTo(8);
+	}
 }
