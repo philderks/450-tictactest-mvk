@@ -6,6 +6,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionsnu
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-11-24
+
+### Fixed
+- Das Spiel startet wieder in einem Terminal; der absichtliche Fehler aus 1.5.1 ist entfernt.
+
 ## [1.5.1] - 2026-11-24
 
 **Absichtlich defekter Testrelease. Nicht verwenden.**
