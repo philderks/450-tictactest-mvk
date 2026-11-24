@@ -195,6 +195,175 @@ class ReleaseDeployTests(unittest.TestCase):
         self.assertIsNotNone(receipt)
         self.assertEqual((original / ".receipt.json").read_bytes(), receipt)
 
+    def select_legacy_component(self, component):
+        legacy = self.app / "releases/1.1.0"
+        legacy.mkdir(parents=True)
+        legacy.parent.chmod(0o755)
+        backend = self.app / "deployments/backend/1.1.0"
+        frontend = self.app / "deployments/frontend/1.1.0"
+        shutil.copyfile(backend / self.jar.name, legacy / self.jar.name)
+        shutil.copytree(backend / "runtime", legacy / "runtime")
+        shutil.copytree(frontend / "frontend", legacy / "frontend")
+        for path in [legacy, *legacy.rglob("*")]:
+            path.chmod(0o755 if path.is_dir() else 0o644)
+        name = "current" if component == "backend" else "frontend-current"
+        (self.app / name).unlink()
+        (self.app / name).symlink_to("releases/1.1.0")
+        if component == "backend":
+            (self.config / "release.env").write_text("JAR_PATH=" + str(self.app / "current" / self.jar.name) + "\n")
+        return legacy
+
+    def assert_unsafe_current_parent_rejected(self, relative_parent, selected, fault="permissions"):
+        self.deploy.deploy("1.1.0")
+        if relative_parent == "releases":
+            self.select_legacy_component("backend" if selected == "frontend" else "frontend")
+        self.add_release("1.2.0")
+        parent = self.app / relative_parent
+        if fault == "permissions":
+            parent.chmod(0o777)
+        elif fault in ("symlink", "legacy-alias"):
+            if fault == "legacy-alias":
+                component = relative_parent.rsplit("/", 1)[-1]
+                self.select_legacy_component(component)
+                name = "current" if component == "backend" else "frontend-current"
+                (self.app / name).unlink()
+                (self.app / name).symlink_to(relative_parent + "/1.1.0")
+            outside = self.base / "displaced-parent"
+            parent.rename(outside)
+            parent.symlink_to(self.app / "releases" if fault == "legacy-alias" else outside)
+        original_stat = Path.stat
+        original_lstat = Path.lstat
+        def with_parent_owner(path, info):
+            if fault == "owner" and path == parent:
+                fields = list(info)
+                fields[4] = os.getuid() ^ 1
+                return os.stat_result(fields)
+            return info
+        def parent_stat(path, *args, **kwargs):
+            return with_parent_owner(path, original_stat(path, *args, **kwargs))
+        def parent_lstat(path, *args, **kwargs):
+            return with_parent_owner(path, original_lstat(path, *args, **kwargs))
+        selections = {name: (os.readlink(self.app / name), (self.app / name).lstat().st_ino)
+                      for name in ("current", "frontend-current")}
+        environment = self.config / "release.env"
+        old_env = environment.read_bytes()
+        old_env_inode = environment.stat().st_ino
+        parent_info = parent.lstat()
+        self.downloads.clear()
+        self.systemctl_mock.reset_mock()
+        self.health_mock.reset_mock()
+        self.probe_mock.reset_mock()
+        with mock.patch.object(Path, "stat", autospec=True, side_effect=parent_stat), \
+             mock.patch.object(Path, "lstat", autospec=True, side_effect=parent_lstat), \
+             mock.patch.object(self.deploy, "validate_cache", wraps=self.deploy.validate_cache) as cache, \
+             mock.patch.object(self.deploy, "validate_legacy", wraps=self.deploy.validate_legacy) as legacy:
+            if fault == "owner":
+                self.assertEqual(parent.lstat().st_uid, os.getuid() ^ 1)
+            with self.assertRaisesRegex(ValueError, "Unsafe"):
+                self.deploy.deploy("1.2.0", selected)
+        cache.assert_not_called()
+        legacy.assert_not_called()
+        self.assertEqual({name: (os.readlink(self.app / name), (self.app / name).lstat().st_ino)
+                          for name in selections}, selections)
+        self.assertEqual(environment.read_bytes(), old_env)
+        self.assertEqual(environment.stat().st_ino, old_env_inode)
+        for attribute in ("st_mode", "st_uid", "st_gid", "st_ino"):
+            self.assertEqual(getattr(parent.lstat(), attribute), getattr(parent_info, attribute),
+                             "validation must not repair or replace the unsafe parent")
+        self.assertEqual(self.downloads, [])
+        self.systemctl_mock.assert_not_called()
+        self.health_mock.assert_not_called()
+        self.probe_mock.assert_not_called()
+        self.assertFalse((self.app / "deployments" / selected / "1.2.0").exists())
+
+    def test_frontend_only_rejects_writable_existing_backend_parent(self):
+        self.assert_unsafe_current_parent_rejected("deployments/backend", "frontend")
+
+    def test_backend_only_rejects_writable_existing_frontend_parent(self):
+        self.assert_unsafe_current_parent_rejected("deployments/frontend", "backend")
+
+    def test_frontend_only_rejects_wrong_owner_of_existing_backend_parent(self):
+        self.assert_unsafe_current_parent_rejected("deployments/backend", "frontend", "owner")
+
+    def test_backend_only_rejects_wrong_owner_of_existing_frontend_parent(self):
+        self.assert_unsafe_current_parent_rejected("deployments/frontend", "backend", "owner")
+
+    def test_existing_shared_deployment_root_is_validated_before_leaf_trees(self):
+        self.assert_unsafe_current_parent_rejected("deployments", "frontend")
+
+    def test_existing_shared_deployment_root_owner_is_validated_before_leaf_trees(self):
+        self.assert_unsafe_current_parent_rejected("deployments", "backend", "owner")
+
+    def test_frontend_only_rejects_writable_existing_legacy_backend_parent(self):
+        self.assert_unsafe_current_parent_rejected("releases", "frontend")
+
+    def test_backend_only_rejects_wrong_owner_of_existing_legacy_frontend_parent(self):
+        self.assert_unsafe_current_parent_rejected("releases", "backend", "owner")
+
+    def test_frontend_only_rejects_backend_parent_symlink_even_into_valid_legacy_release(self):
+        self.assert_unsafe_current_parent_rejected("deployments/backend", "frontend", "legacy-alias")
+
+    def test_backend_only_rejects_frontend_parent_symlink_even_into_valid_legacy_release(self):
+        self.assert_unsafe_current_parent_rejected("deployments/frontend", "backend", "legacy-alias")
+
+    def test_selection_cannot_normalize_away_a_symlink_parent(self):
+        self.deploy.deploy("1.1.0")
+        self.add_release("1.2.0")
+        alias = self.app / "parent-alias"
+        alias.symlink_to(self.app / "deployments")
+        current = self.app / "current"
+        current.unlink()
+        current.symlink_to("parent-alias/../deployments/backend/1.1.0")
+        original = os.readlink(current)
+        self.downloads.clear()
+        self.systemctl_mock.reset_mock()
+        with mock.patch.object(self.deploy, "validate_cache", wraps=self.deploy.validate_cache) as cache:
+            with self.assertRaisesRegex(ValueError, "Unsafe"):
+                self.deploy.deploy("1.2.0", "frontend")
+        cache.assert_not_called()
+        self.assertEqual(os.readlink(current), original)
+        self.assertTrue(alias.is_symlink())
+        self.assertEqual(self.downloads, [])
+        self.systemctl_mock.assert_not_called()
+
+    def test_existing_shared_deployment_root_symlink_is_rejected_without_repair(self):
+        self.assert_unsafe_current_parent_rejected("deployments", "frontend", "symlink")
+
+    def test_existing_legacy_parent_symlink_is_rejected_without_repair(self):
+        self.assert_unsafe_current_parent_rejected("releases", "backend", "symlink")
+
+    def test_existing_parent_validation_does_not_create_missing_directory(self):
+        missing = self.app / "missing-parent"
+        with mock.patch.object(Path, "mkdir") as mkdir, mock.patch.object(Path, "chmod") as chmod:
+            with self.assertRaises(FileNotFoundError):
+                self.deploy.validate_component_directory(missing)
+        mkdir.assert_not_called()
+        chmod.assert_not_called()
+        self.assertFalse(missing.exists())
+
+    def test_safe_legacy_parent_preserves_mixed_tuple_and_verified_cache_reuse(self):
+        self.deploy.deploy("1.1.0")
+        legacy = self.select_legacy_component("backend")
+        original = {path.relative_to(legacy).as_posix(): path.read_bytes()
+                    for path in legacy.rglob("*") if path.is_file()}
+        environment = self.config / "release.env"
+        old_env = environment.read_bytes()
+        self.add_release("1.2.0")
+        self.deploy.deploy("1.2.0", "frontend")
+        self.downloads.clear()
+        self.systemctl_mock.reset_mock()
+        self.probe_mock.reset_mock()
+        self.deploy.deploy("1.1.0", "frontend")
+        self.assertEqual(self.downloads, [])
+        self.assertEqual(os.readlink(self.app / "current"), "releases/1.1.0")
+        self.assertEqual((self.app / "frontend-current").resolve(), self.app / "deployments/frontend/1.1.0")
+        self.assertEqual(environment.read_bytes(), old_env)
+        self.assertEqual(legacy.parent.stat().st_mode & 0o7777, 0o755)
+        self.assertEqual({path.relative_to(legacy).as_posix(): path.read_bytes()
+                          for path in legacy.rglob("*") if path.is_file()}, original)
+        self.systemctl_mock.assert_not_called()
+        self.probe_mock.assert_not_called()
+
     def test_active_backend_tampering_blocks_frontend_change_before_download(self):
         self.deploy.deploy("1.1.0")
         jar = self.app / "deployments/backend/1.1.0" / self.jar.name
@@ -298,6 +467,7 @@ class ReleaseDeployTests(unittest.TestCase):
         self.deploy.deploy("1.1.0")
         legacy = self.app / "releases/1.1.0"
         legacy.mkdir(parents=True)
+        legacy.parent.chmod(0o755)  # Prepared legacy parent, independent of the test runner's umask.
         backend = self.app / "deployments/backend/1.1.0"
         frontend = self.app / "deployments/frontend/1.1.0"
         shutil.copyfile(backend / self.jar.name, legacy / self.jar.name)

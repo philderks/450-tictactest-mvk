@@ -366,13 +366,18 @@ class DeploymentRollbackError(RuntimeError):
         super().__init__(str(deployment_error) + "; rollback failed: " + str(rollback_error))
 
 
+def validate_component_directory(path):
+    info = path.lstat()
+    if (not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o755
+            or info.st_uid != os.getuid()):
+        raise ValueError("Unsafe deployment directory: " + str(path))
+
+
 def ensure_component_directory(path):
     if not os.path.lexists(path):
         path.mkdir(mode=0o755)
         path.chmod(0o755)
-    if (path.is_symlink() or not path.is_dir() or stat.S_IMODE(path.stat().st_mode) != 0o755
-            or path.stat().st_uid != os.getuid()):
-        raise ValueError("Unsafe deployment directory: " + str(path))
+    validate_component_directory(path)
 
 
 def deploy(version, components="both"):
@@ -414,16 +419,26 @@ def deploy(version, components="both"):
         if not initial:
             if any(target is None for target in previous.values()) or previous_env is None:
                 raise ValueError("Inconsistent or unmigrated legacy selections; migrate frontend pointer/nginx separately")
+            previous_paths = {}
+            # Validate both selections' parents before trusting either leaf tree.
             for component, name in (("backend", "current"), ("frontend", "frontend-current")):
-                path = (APP / name).resolve(strict=True)
+                # Follow only the selection link; do not normalize away symlink parents.
+                path = APP / previous[name]
                 if not re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", path.name):
                     raise ValueError("Unsafe component selection: " + str(path))
                 if path.parent == APP / "deployments" / component:
-                    validate_cache(path, component, path.name)
+                    validate_component_directory(APP / "deployments")
+                    validate_component_directory(path.parent)
                 elif path.parent == APP / "releases":
-                    validate_legacy(path, path.name)
+                    validate_component_directory(path.parent)
                 else:
                     raise ValueError("Unsafe component selection: " + str(path))
+                previous_paths[component] = path
+            for component, path in previous_paths.items():
+                if path.parent == APP / "releases":
+                    validate_legacy(path, path.name)
+                else:
+                    validate_cache(path, component, path.name)
                 previous_versions[component] = path.name
             values = [line.partition("=")[2] for line in previous_env.decode("utf-8").splitlines()
                       if line.startswith("JAR_PATH=")]

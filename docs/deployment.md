@@ -1278,8 +1278,11 @@ Eine zusätzliche echte nginx-Parser-/HTTP-Fixture bestätigt, dass verpacktes
 `config.js` die infraeigene Route nicht überschreibt und der Frontendzeiger ohne
 nginx-Neustart gewechselt werden kann.
 
-Die Regressionen bestehen mit **103 Infrastruktur-/Smoke-, 10 Support- und
-4 Frontendtests**. Zusätzliche Regressionen sichern die gemeinsame Deadline
+Die Regressionen bestehen mit **118 Infrastruktur-/Smoke-, 10 Support- und
+4 Frontendtests**. Selektive Deployments prüfen die Eigentümer, `0755`-Rechte und
+Symlinkfreiheit der Vorordner **beider** bestehenden Komponenten, einschliesslich
+Legacy-Auswahlen, bevor sie deren Inhalte vertrauen. Unsichere Vorordner werden
+nicht repariert. Zusätzliche Regressionen sichern die gemeinsame Deadline
 inklusive Opener-/TLS-Initialisierung und private DNS-Fehler ohne Threadtraceback.
 Nicht abbrechbare DNS-/TLS-Setupworker dürfen nach einem Timeout nur Setup
 abschliessen, niemals verspätet einen Socket öffnen oder einen Handshake starten.
