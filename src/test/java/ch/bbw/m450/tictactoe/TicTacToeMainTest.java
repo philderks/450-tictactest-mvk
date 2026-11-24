@@ -11,6 +11,7 @@ import java.util.Arrays;
 import java.util.Deque;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junitpioneer.jupiter.StdIo;
 import org.junitpioneer.jupiter.StdOut;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -67,7 +68,9 @@ class TicTacToeMainTest {
 	}
 
 	@Test
-	@StdIo({})
+	@Timeout(value = 5, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+	// Not empty: an empty @StdIo would read the real stdin and block.
+	@StdIo("no number")
 	void main_stopsWithMessage_whenInputEnds(StdOut out) {
 		TicTacToeMain.main(new String[0]);
 
