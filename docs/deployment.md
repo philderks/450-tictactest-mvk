@@ -747,8 +747,10 @@ seine automatisierte Deployment-Pipeline ist noch nicht implementiert.
 **Status:** Der Nutzer hat das Konzept freigegeben. Der erste Umsetzungsschritt
 hat SSM-Befehlsausführung und Ergebnisabfrage mit einem echten reinen Lesebefehl
 nachgewiesen; siehe Abschnitt 11. Dies ist noch keine Deployment-Pipeline.
-Release `1.2.0` läuft unverändert. GitHub-Environment/Secrets und Workflows wurden
-noch nicht eingerichtet; kein Deployment, Dienstneustart oder Apply ausgeführt.
+Release `1.2.0` läuft unverändert. Das auf `main` beschränkte Environment samt
+drei Secrets und vier Variables ist nach gesonderter Freigabe eingerichtet;
+siehe Abschnitt 12. Ein GitHub-Runner-/Deployworkflow wurde noch nicht erstellt
+oder getestet; kein Deployment, Dienstneustart oder Apply ausgeführt.
 
 ### 1. Entscheidung: GitHub Actions steuert die EC2 über SSM
 
@@ -769,8 +771,9 @@ müsste der Artefaktzugriff separat entworfen werden.
 
 ### 2. Secrets, Variables und Ablauf der Lab-Zugangsdaten
 
-Vorgesehen ist ein GitHub Environment **`learner-lab`**, zugänglich nur für den
-vertrauenswürdigen Deployjob von `main`. PR-Tests und Release-Build benötigen
+Eingerichtet ist das GitHub Environment **`learner-lab`** mit einer
+Deployment-Branchregel ausschliesslich für `main`. Der zukünftige vertrauenswürdige
+Deployjob wird es ausdrücklich referenzieren; PR-Tests und Release-Build benötigen
 keine AWS-Secrets. Secrets werden verschlüsselt gespeichert und dem Job nur
 über ausdrücklich verwendete Inputs/Umgebungsvariablen bereitgestellt.[4]
 
@@ -1059,9 +1062,10 @@ eigenen belegten Komponentenstand und einen Plan zum gewählten Zielstand.
 
 ### 10. Nächste Umsetzungsscheiben nach Konzeptfreigabe
 
-1. SSM-Sende-/Ergebnisrechte sind harmlos nachgewiesen; als nächste Etappe das
-   Environment und den sicheren Erneuerungsweg gemeinsam einrichten. Keine
-   Secret-Werte im Chat und keine Behauptung, GitHub-Secrets seien schon vorhanden.
+1. SSM-Sende-/Ergebnisrechte sind harmlos nachgewiesen. Environment, drei Secrets
+   und vier Variables sind nach ausdrücklicher Freigabe eingerichtet. Der echte
+   Runner-Zugriff steht bis zum freigegebenen Workflow noch aus; keine Secret-Werte
+   im Chat oder als Nachweis im Repository.
 2. Getrennte, wiederverwendbare Komponentenaktivierung und Rollback im bestehenden
    `infra/scripts/deploy-release.py` testgetrieben umsetzen; nginx-Umstellung
    separat prüfen. Erst dann auf die aktuelle Umgebung übernehmen.
@@ -1076,9 +1080,10 @@ eigenen belegten Komponentenstand und einen Plan zum gewählten Zielstand.
 **Freigabestand:** SSM mit temporären Environment-Secrets, getrennte
 Komponentenaktivierung und Verkettung über den erfolgreichen Release-Workflow
 sind als Konzept freigegeben. Der Dokumentationscheckpoint darf nach Prüfung
-über `docs/auftrag-3-konzept` nach `dev` integriert werden. Das ersetzt weder
-die noch ausstehende Einrichtung der GitHub-Secrets noch spätere Main-/Release-
-oder Löschfreigaben. Die übrigen Umsetzungsscheiben bleiben offen.
+über `docs/auftrag-3-konzept` nach `dev` integriert werden und ist dort als
+PR **#22** gemergt, mit grüner Exact-Head-/Merge-CI. Die anschliessende
+Credential-Übernahme wurde separat ausdrücklich erlaubt. Spätere Main-/Release-
+oder Löschfreigaben und die übrigen Umsetzungsscheiben bleiben offen.
 
 ### 11. Erster echter SSM-Zugriffstest — 24. November 2026
 
@@ -1116,8 +1121,67 @@ einen Befehl ausführen und dessen Ergebnis lesen. Der zukünftige GitHub-Runner
 ist noch nicht eingerichtet und wurde damit nicht getestet. Weil SSM hier
 Root-Befehle ausführen kann, sind die geplanten Workflow-/Environment- und
 Secret-Schutzgrenzen notwendig. Abgelaufene oder neue Lab-Credentials müssen
-später erneut geprüft werden. Als Nächstes folgt die ausdrücklich getrennte
-Einrichtung des Environments und des sicheren Credential-Erneuerungswegs.
+später erneut geprüft werden. Der anschliessende, ausdrücklich getrennt
+freigegebene Einrichtungsschritt ist in Abschnitt 12 dokumentiert.
+
+### 12. GitHub-Environment und geschützte Credential-Übernahme — 24. November 2026
+
+Der Nutzer wählte ausdrücklich die geschützte Übernahme des aktuellen
+`tictactest-lab`-Credential-Satzes nach **`philderks/450-tictactest-mvk` →
+Environment `learner-lab`**. Es handelt sich um Environment-Secrets, nicht um
+für sämtliche Jobs bereitgestellte Repository-Secrets.
+
+Um **10:44 UTC** wurde das vorher nicht vorhandene Environment angelegt.
+Vor jeder Secret-Übertragung wurde seine Schutzregel zurückgelesen: exakt
+ein Branchmuster **`main`** vom Typ **`branch`**, keine Tag-/Wildcard-Regel;
+`custom_branch_policies=true`, `protected_branches=false`. Letzteres wählt die
+benannte Regel statt pauschal alle geschützten Branches. Die API trennt diese
+Arten der Environment-Branchsteuerung.[11] Es gibt keine zusätzliche Wartezeit
+oder Reviewer-Pflicht für diese Lab-Automatisierung. An den vorhandenen
+Environments `copilot` und `github-pages` wurde nichts geändert.
+
+**Wichtig:** Das ist keine Garantie, dass nur eine bestimmte Workflowdatei
+Secrets verwenden kann. Ein auf `main` zugelassener Workflow könnte das
+Environment referenzieren. Vertrauenswürdiger Main-Code und die geplanten
+Job-/Eventguards bleiben deshalb erforderlich; keine neue Repo-Branchprotection
+oder andere Sicherheitsrichtlinie wurde stillschweigend eingerichtet.
+
+| Tatsächlich eingerichtet | Verifikation |
+|---|---|
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | Exakt drei Environment-Secret-Namen sowie deren Erstellungs-/Aktualisierungsmetadaten zurückgelesen |
+| `AWS_REGION`, `AWS_ACCOUNT_ID`, `TICTACTEST_INSTANCE_ID`, `TICTACTEST_FRONTEND_URL` | Exakt vier Environment-Variables, Werte gegen die geprüfte Region bzw. privaten State/Account verglichen |
+| `learner-lab`-Branchpolicy | Exakt eine Regel `main`, Typ `branch`, vor und nach Übertragung bestätigt |
+
+**Geschützter Übertragungsweg:** Die AWS CLI löste den ausdrücklich gewählten
+lokalen Credential-Satz auf. Der JSON-Export wurde ausschliesslich intern in
+einem Prozess abgefangen, niemals im Terminal/Chat ausgegeben oder in eine
+neue Credentialdatei geschrieben. Vorher war geprüft, dass CLI-History nicht
+aktiviert ist. Der Exportbefehl ist kein sicherer Anzeige-/Filterbefehl:
+`--query` und `--output` unterdrücken seinen Credential-Export nicht; deshalb
+ihn nicht als vermeintlich gefilterte öffentliche Prüfausgabe ausführen.[10]
+
+Genau der aufgelöste temporäre Satz wurde vor der Übernahme per STS gegen das
+erwartete Konto und per lesender SSM-Ergebnisabfrage geprüft; keine Credentials
+eines Instance Profiles wurden stellvertretend übernommen. Die drei Werte
+gingen danach einzeln über einen internen STDIN-Pipe an `gh secret set`, mit
+explizitem GitHub-Host/Repository und Environment. Kein Wert war Shellargument,
+Repo-/tfvars-/State-Inhalt oder gespeicherter Testnachweis. Der CLI-Transfer
+verschlüsselt Secret-Werte vor dem Senden.[4]
+
+**Was die Rückleseprüfung nicht behauptet:** GitHub liefert gespeicherte Secrets
+nicht als Klartext zurück. Die Metadaten bestätigen Namen und Aktualisierung,
+nicht eine erneute Klartextprüfung. Die exakten Quellwerte wurden lokal validiert;
+ihre Entschlüsselung/Nutzung durch einen echten GitHub-Runner und dessen SSM-
+Aufruf werden erst mit dem später freigegebenen Workflow nachgewiesen. Noch
+existiert kein Deployworkflow und keine automatische App-Auslieferung.
+
+Der rein nichtgeheime Einrichtungsbeleg liegt privat unter
+`~/.local/share/tictactest-iac/evidence/auftrag3-environment-…/`. Andere
+Environments und der lokale Infrastruktur-State blieben unverändert. Nach
+einer neuen Lab-Session muss der aktuelle, vollständige Credential-Satz erneut
+gezielt freigegeben und geschützt aktualisiert werden; ein früherer erfolgreicher
+Upload beweist keine spätere Gültigkeit. Nach einem Hostersatz müssen zusätzlich
+Instanz-ID und Frontend-URL in den Variables erneuert werden.
 
 ## Sources
 
@@ -1130,3 +1194,5 @@ Einrichtung des Environments und des sicheren Credential-Erneuerungswegs.
 [7] https://docs.github.com/en/actions/using-jobs/using-concurrency — Concurrency
 [8] https://docs.aws.amazon.com/systems-manager/latest/userguide/walkthrough-cli.html — AWS Run Command
 [9] https://docs.aws.amazon.com/systems-manager/latest/APIReference/API_GetCommandInvocation.html — SSM eventual consistency
+[10] https://docs.aws.amazon.com/cli/latest/reference/configure/export-credentials.html — AWS CLI credential resolution/export
+[11] https://docs.github.com/en/rest/deployments/branch-policies — GitHub environment deployment branch policies
