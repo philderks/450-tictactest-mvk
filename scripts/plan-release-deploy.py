@@ -246,20 +246,65 @@ def trusted_tag(git, api, repo, tag, main):
     return local
 
 
-def plan_release(repo, tag, mode="auto", checkout=None, api=None):
+def classify_between(git, before, target_commit, previous_tag, tag):
+    # Inventory and tag verification stay usable without importing the classifier.
+    from release_changes import classify_changes, version_only_change
+    changes = git.diff(before, target_commit)
+    version_only = False
+    if any(change["path"] == "build.gradle" or change.get("old_path") == "build.gradle" for change in changes):
+        old_blob = git.blob(before, "build.gradle")
+        new_blob = git.blob(target_commit, "build.gradle")
+        if old_blob is not None and new_blob is not None:
+            version_only = version_only_change(old_blob, new_blob, previous_tag[1:], tag[1:])
+    return classify_changes(changes, version_only_build=version_only)
+
+
+def check_running_base(git, api, repo, main, releases, plan, running):
+    """Refuse a selective deploy onto a host that does not run the assumed base.
+
+    Versions may differ per component. A component that stays untouched must have
+    no relevant change between the version it runs and the target release.
+    """
+    if not isinstance(running, dict) or set(running) != {"backend", "frontend"}:
+        raise PlanError("running backend and frontend versions are both required")
+    for component in ("backend", "frontend"):
+        value = running[component]
+        if not isinstance(value, str):
+            raise PlanError("running {} version is unknown".format(component))
+        current = "v" + value
+        if parse_version(current) > parse_version(plan["tag"]):
+            raise PlanError("running {} {} is newer than the target; use a manual deploy to roll back".format(
+                component, value))
+        if plan[component] or current == plan["tag"]:
+            continue
+        if not any(row.get("tag_name") == current and row.get("draft") is False
+                   and row.get("prerelease") is False for row in releases):
+            raise PlanError("running {} {} is not a published release; use a manual deploy".format(component, value))
+        before = trusted_tag(git, api, repo, current, main)
+        git.ensure_ancestor(before, plan["target_commit"])
+        if classify_between(git, before, plan["target_commit"], current, plan["tag"])[component]:
+            raise PlanError("running {} {} missed an earlier release; use a manual deploy".format(component, value))
+
+
+def plan_release(repo, tag, mode="auto", checkout=None, api=None, running=None, expected_commit=None):
     """Return one plan; api is an injectable callable accepting GET endpoints."""
     validate_repo(repo)
     parse_version(tag)
     if mode not in ("auto", "manual"):
         raise PlanError("mode must be auto or manual")
+    if running is not None and mode != "auto":
+        raise PlanError("running versions only apply to automatic plans")
     if api is None:
         api = GitHubRead()
-    target, previous = select_releases(load_releases(api, repo), tag, mode)
+    releases = load_releases(api, repo)
+    target, previous = select_releases(releases, tag, mode)
     git = GitRead(Path.cwd() if checkout is None else checkout)
     if git.run("rev-parse", "--is-shallow-repository").stdout.strip() != b"false":
         raise PlanError("complete local Git history is required; shallow checkout unsupported")
     main = git.resolve("refs/remotes/origin/main^{commit}")
     target_commit = trusted_tag(git, api, repo, tag, main)
+    if expected_commit is not None and valid_sha(expected_commit) != target_commit:
+        raise PlanError("release tag does not point to the commit of the triggering run")
     result = {"schema_version": 1, "repo": repo, "mode": mode,
               "tag": tag, "version": tag[1:], "target_commit": target_commit,
               "previous_tag": None, "previous_commit": None,
@@ -268,22 +313,16 @@ def plan_release(repo, tag, mode="auto", checkout=None, api=None):
     if mode == "manual" or previous is None:
         result["reason"] = ("manual: deploy both components" if mode == "manual" else
                             "first published stable release: deploy both components")
-        return result
-    previous_tag = previous["tag_name"]
-    before = trusted_tag(git, api, repo, previous_tag, main)
-    git.ensure_ancestor(before, target_commit)
-    changes = git.diff(before, target_commit)
-    # Inventory and tag verification stay usable without importing the classifier.
-    from release_changes import classify_changes, version_only_change
-    version_only = False
-    if any(change["path"] == "build.gradle" or change.get("old_path") == "build.gradle" for change in changes):
-        old_blob = git.blob(before, "build.gradle")
-        new_blob = git.blob(target_commit, "build.gradle")
-        if old_blob is not None and new_blob is not None:
-            version_only = version_only_change(old_blob, new_blob, previous_tag[1:], tag[1:])
-    result.update(classify_changes(changes, version_only_build=version_only))
-    result.update(previous_tag=previous_tag, previous_commit=before,
-                  reason="published predecessor comparison: " + result["components"])
+    else:
+        previous_tag = previous["tag_name"]
+        before = trusted_tag(git, api, repo, previous_tag, main)
+        git.ensure_ancestor(before, target_commit)
+        result.update(classify_between(git, before, target_commit, previous_tag, tag))
+        result.update(previous_tag=previous_tag, previous_commit=before,
+                      reason="published predecessor comparison: " + result["components"])
+    if running is not None:
+        check_running_base(git, api, repo, main, releases, result, running)
+        result["running"] = dict(running)
     return result
 
 
@@ -319,9 +358,15 @@ def main(argv=None, api=None):
     parser.add_argument("--repo", required=True, help="explicit OWNER/REPO on github.com")
     parser.add_argument("--mode", choices=("auto", "manual"), default="auto")
     parser.add_argument("--checkout", default=None, help="local checkout (default: current directory)")
+    parser.add_argument("--expect-commit", default=None, help="full commit SHA the tag must point to")
+    parser.add_argument("--running-backend", default=None, help="version the host currently runs (X.Y.Z)")
+    parser.add_argument("--running-frontend", default=None, help="version the host currently serves (X.Y.Z)")
     try:
         args = parser.parse_args(argv)
-        plan = plan_release(args.repo, args.tag, args.mode, args.checkout, api)
+        running = None
+        if args.running_backend is not None or args.running_frontend is not None:
+            running = {"backend": args.running_backend, "frontend": args.running_frontend}
+        plan = plan_release(args.repo, args.tag, args.mode, args.checkout, api, running, args.expect_commit)
         output = json.dumps(plan, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     except PlanError as error:
         print("release plan error: " + str(error)[:240].replace("\n", " ").replace("\r", " "), file=sys.stderr)

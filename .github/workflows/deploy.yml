@@ -1,0 +1,140 @@
+name: Deploy
+
+# Deployt nur veröffentlichte Releases, nie einen Push oder Pull Request.
+# - automatisch: nachdem der Workflow "Release" für einen Tag erfolgreich war
+# - manuell: "Run workflow" auf main mit einem veröffentlichten Tag (Rollback, Nachholen, Wiederaufbau)
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Veröffentlichter Release-Tag, z. B. v1.2.0 (deployt Backend und Frontend)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  # Entscheidet ohne Secrets, was deployt wird.
+  plan:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        startsWith(github.event.workflow_run.head_branch, 'v')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
+      components: ${{ steps.plan.outputs.components }}
+      mode: ${{ steps.plan.outputs.mode }}
+      commit: ${{ steps.plan.outputs.commit }}
+    steps:
+      # Werkzeuge kommen von main, der Release-Tag ist nur ein Datenwert.
+      - name: Checkout main with full history
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Plan changed components
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.workflow_run.head_branch }}
+          MODE: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'auto' }}
+          RUN_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          arguments=("$TAG" --repo "$GITHUB_REPOSITORY" --mode "$MODE")
+          if [ "$MODE" = auto ]; then
+            arguments+=(--expect-commit "$RUN_COMMIT")
+          fi
+          python3 scripts/plan-release-deploy.py "${arguments[@]}" > "$RUNNER_TEMP/plan.json"
+          jq -r '"tag=\(.tag)", "version=\(.version)", "components=\(.components)",
+                 "mode=\(.mode)", "commit=\(.target_commit)"' "$RUNNER_TEMP/plan.json" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Deployment-Plan"
+            jq -r '"- Release: `\(.tag)` (Modus `\(.mode)`)",
+                   "- Vergleich mit: `\(.previous_tag // "kein Vorgänger")`",
+                   "- Backend deployen: **\(.backend)**",
+                   "- Frontend deployen: **\(.frontend)**",
+                   "- Betriebsdateien geändert (kein App-Deploy): \(.operational_paths | length)"' "$RUNNER_TEMP/plan.json"
+            if [ "$(jq -r .components "$RUNNER_TEMP/plan.json")" = none ]; then
+              echo
+              echo "Weder Backend noch Frontend geändert: kein Deployment."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: plan
+    if: needs.plan.outputs.components != 'none'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Secrets und Zielwerte stehen nur diesem Job zur Verfügung (Branchregel: main).
+    environment: learner-lab
+    # Nie zwei Deployments gleichzeitig; wartende Läufe werden nicht verworfen.
+    concurrency:
+      group: tictactest-learner-lab
+      cancel-in-progress: false
+      queue: max
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      TICTACTEST_INSTANCE_ID: ${{ vars.TICTACTEST_INSTANCE_ID }}
+      TICTACTEST_FRONTEND_URL: ${{ vars.TICTACTEST_FRONTEND_URL }}
+    steps:
+      - name: Checkout main with full history
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check credentials and target
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: python3 -B infra/scripts/ssm-deploy.py preflight
+
+      # Erst innerhalb der Sperre: Läuft wirklich die Version, von der der Plan ausgeht?
+      - name: Check running base
+        if: needs.plan.outputs.mode == 'auto'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          COMMIT: ${{ needs.plan.outputs.commit }}
+          COMPONENTS: ${{ needs.plan.outputs.components }}
+        run: |
+          set -euo pipefail
+          versions=$(python3 -B infra/scripts/ssm-deploy.py running)
+          backend=$(sed -n 's/^backend=//p' <<< "$versions")
+          frontend=$(sed -n 's/^frontend=//p' <<< "$versions")
+          echo "Läuft vorher: Backend $backend, Frontend $frontend" | tee -a "$GITHUB_STEP_SUMMARY"
+          python3 scripts/plan-release-deploy.py "$TAG" --repo "$GITHUB_REPOSITORY" --mode auto \
+            --expect-commit "$COMMIT" --running-backend "$backend" --running-frontend "$frontend" > "$RUNNER_TEMP/plan.json"
+          test "$(jq -r .components "$RUNNER_TEMP/plan.json")" = "$COMPONENTS"
+
+      - name: Deploy release artifacts and verify versions
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          COMPONENTS: ${{ needs.plan.outputs.components }}
+        run: python3 -B infra/scripts/ssm-deploy.py deploy "$VERSION" --components "$COMPONENTS" --commit "$GITHUB_SHA"
+
+      - name: Report running versions
+        if: always()
+        run: |
+          {
+            echo "## Laufende Versionen nach dem Lauf"
+            python3 -B infra/scripts/ssm-deploy.py running | sed 's/^/- /' || echo "- nicht lesbar"
+          } >> "$GITHUB_STEP_SUMMARY"

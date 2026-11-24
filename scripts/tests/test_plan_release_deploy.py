@@ -506,6 +506,88 @@ class CLITests(GitFixture):
             self.assertEqual(len(stderr.getvalue().splitlines()), 1)
 
 
+class RunningBaseTests(GitFixture):
+    """A selective plan is only safe when the host really runs the assumed base."""
+    def three_releases(self, middle, last):
+        rows = [release("v1.0.0", 1), release("v1.1.0", 2, "2026-02-01T00:00:00Z"),
+                release("v1.2.0", 3, "2026-03-01T00:00:00Z")]
+        self.git("reset", "-q", "--hard", self.base)
+        commits = []
+        for version, files in (("1.1.0", middle), ("1.2.0", last)):
+            self.write("build.gradle", "version = '{}'\r\n".format(version).encode())
+            for path, data in files.items():
+                self.write(path, data)
+            commits.append(self.commit(version))
+        self.target = commits[0]
+        self.git("tag", "-d", "v1.1.0")
+        self.git("tag", "-a", "v1.1.0", "-m", "middle", commits[0])
+        self.git("tag", "-f", "v1.2.0", commits[1])
+        self.git("update-ref", "refs/remotes/origin/main", commits[1])
+        api = self.api(rows)
+        api.routes["repos/o/r/git/ref/tags/v1.2.0"] = {
+            "ref": "refs/tags/v1.2.0", "object": {"type": "commit", "sha": commits[1]}}
+        return api, commits[1]
+
+    def plan(self, p, api, backend, frontend, tag="v1.2.0", **options):
+        return p.plan_release("o/r", tag, checkout=self.root, api=api,
+                              running={"backend": backend, "frontend": frontend}, **options)
+
+    def test_mixed_versions_are_fine_when_unselected_component_is_unchanged(self):
+        p = load_planner()
+        api, _ = self.three_releases({"src/main/java/App.java": b"1.1"}, {"frontend/index.html": b"1.2"})
+        result = self.plan(p, api, "1.1.0", "1.0.0")
+        self.assertEqual(result["components"], "frontend")
+        self.assertEqual(result["running"], {"backend": "1.1.0", "frontend": "1.0.0"})
+        api, _ = self.three_releases({"frontend/index.html": b"1.1"}, {"frontend/index.html": b"1.2"})
+        self.assertEqual(self.plan(p, api, "1.0.0", "1.1.0")["components"], "frontend")
+
+    def test_missed_release_of_an_unselected_component_fails(self):
+        p = load_planner()
+        api, _ = self.three_releases({"src/main/java/App.java": b"1.1"}, {"frontend/index.html": b"1.2"})
+        with self.assertRaisesRegex(p.PlanError, "backend.*1.0.0.*manual"):
+            self.plan(p, api, "1.0.0", "1.0.0")
+
+    def test_automatic_downgrade_is_refused_for_every_component(self):
+        p = load_planner()
+        api, _ = self.three_releases({"src/main/java/App.java": b"1.1"}, {"frontend/index.html": b"1.2"})
+        for backend, frontend in (("1.2.0", "1.0.0"), ("1.0.0", "1.2.0")):
+            with self.subTest(backend=backend), self.assertRaisesRegex(p.PlanError, "newer"):
+                self.plan(p, api, backend, frontend, tag="v1.1.0")
+
+    def test_unpublished_or_malformed_running_versions_fail(self):
+        p = load_planner()
+        api, _ = self.three_releases({}, {"frontend/index.html": b"1.2"})
+        for backend in ("0.9.0", "v1.0.0", "1.0", "", "1.0.0\n", None):
+            with self.subTest(backend=backend), self.assertRaises(p.PlanError):
+                self.plan(p, api, backend, "1.0.0")
+
+    def test_running_base_is_only_meaningful_for_automatic_plans(self):
+        p = load_planner()
+        api, _ = self.three_releases({}, {})
+        with self.assertRaises(p.PlanError):
+            self.plan(p, api, "1.0.0", "1.0.0", mode="manual")
+
+    def test_expected_commit_must_match_the_release_tag(self):
+        p = load_planner()
+        api, commit = self.three_releases({}, {"frontend/index.html": b"1.2"})
+        plan = p.plan_release("o/r", "v1.2.0", checkout=self.root, api=api, expected_commit=commit)
+        self.assertEqual(plan["target_commit"], commit)
+        for wrong in (self.base, "main", ""):
+            with self.subTest(wrong=wrong), self.assertRaises(p.PlanError):
+                p.plan_release("o/r", "v1.2.0", checkout=self.root, api=api, expected_commit=wrong)
+
+    def test_cli_needs_both_running_versions(self):
+        p = load_planner()
+        api, commit = self.three_releases({}, {"frontend/index.html": b"1.2"})
+        base = ["v1.2.0", "--repo", "o/r", "--checkout", str(self.root)]
+        for extra, code in ((["--running-backend", "1.1.0"], 1), (["--running-frontend", "1.1.0"], 1),
+                            (["--running-backend", "1.1.0", "--running-frontend", "1.1.0",
+                              "--expect-commit", commit], 0)):
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with self.subTest(extra=extra), contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                self.assertEqual(p.main(base + extra, api=api), code)
+
+
 class VersionTests(unittest.TestCase):
     def test_canonical_versions_are_compared_numerically(self):
         p = load_planner()
