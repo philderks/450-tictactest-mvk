@@ -49,7 +49,7 @@ Abgedeckt sind auch ein Unentschieden (`play()` liefert `null`) und ein fehlerha
 
 ### 4. End-to-End-Tests für den Konsoleneinstieg
 
-[`TicTacToeE2ETest`](../src/e2eTest/java/ch/bbw/m450/tictactoe/TicTacToeE2ETest.java) ruft mit JUnit Pioneer `@StdIo` tatsächlich `main()` auf: Eingabe über `System.in`, Ausgabe bis zum Spielresultat über `StdOut`. Der Computer (`PerfectPlayer`) spielt immer das erste freie Feld. Jeder Test hat ein JUnit-Timeout von 5 Sekunden in einem separaten Thread; dadurch kann ein hängender Build abgebrochen werden. Die Suite läuft isoliert über `./gradlew e2eTest`, als Teil von `check` und explizit in [CI](../.github/workflows/ci.yml) mit eigenem JUnit-Report-Artefakt. Testumgebung: Java 25, Gradle-Wrapper und JUnit 6/Pioneer 2.3.0.
+[`TicTacToeE2ETest`](../src/e2eTest/java/ch/bbw/m450/tictactoe/TicTacToeE2ETest.java) ruft mit JUnit Pioneer `@StdIo` tatsächlich `main()` auf: Eingabe über `System.in`, Ausgabe bis zum Spielresultat über `StdOut`. Der Computer (`PerfectPlayer`) spielt optimal und verliert nie; die Partien sind deterministisch. Jeder Test hat ein JUnit-Timeout von 5 Sekunden in einem separaten Thread; dadurch kann ein hängender Build abgebrochen werden. Die Suite läuft isoliert über `./gradlew e2eTest`, als Teil von `check` und explizit in [CI](../.github/workflows/ci.yml) mit eigenem JUnit-Report-Artefakt. Testumgebung: Java 25, Gradle-Wrapper und JUnit 6/Pioneer 2.3.0.
 
 | Testziel / Eingabe des Menschen (X) | Erwartetes Verhalten | Tatsächlich nach dem Fix (`e2eTest`) |
 |---|---|---|
