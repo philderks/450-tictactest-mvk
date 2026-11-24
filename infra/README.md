@@ -85,10 +85,24 @@ Infrastruktur bleiben getrennt; ein Release ist keine Infrastruktur-Neuerstellun
   eingebunden und der bestehenden EC2 in-place zugeordnet. Ein echter STS-Aufruf
   auf der EC2 bestätigt ihre Rollenidentität bei deaktivierten lokalen
   Credential-Dateien; keine Access Keys wurden auf den Server kopiert.
-- **Noch offen:** kontrolliertes Aufräumen nach separater Freigabe sowie die
-  übrige Grundlagenreflexion. Die Instanz läuft derzeit und verursacht Kosten.
-  Der vollständige IaC-Lernauftrag und der vollständige Webapp-Auftrag 2 sind
-  noch nicht als abgeschlossen zu betrachten.
+- Die Erststarteinrichtung ist jetzt als versionsunabhängige User Data aus
+  genau vier Runtime-Dateien beschrieben. Ein echter frischer EC2-Start hat
+  die gepinnten Pakete, den Dienstbenutzer und beide aktivierten Units ohne
+  manuelles Runtime-Setup eingerichtet; die App-Version bleibt eine Deploymentwahl.
+- **Webapp-Auftrag 2 ist technisch abgeschlossen:** zwei Releases manuell,
+  Release B `1.2.0` auf derselben EC2 ohne Apply und mit No-op-Folgeplan;
+  tatsächlicher Sessionwechsel, Dienstabsturz, Konfigurationsänderung und
+  gesondert freigegebener vollständiger destroy/apply-Test sind dokumentiert.
+  Nach dem Wiederaufbau läuft derselbe unveränderte Release auch nach erneutem
+  Boot automatisch. Die aktuelle EIP/URL kommt aus den Outputs, nicht aus alten
+  Screenshots oder Quellcodewerten. [Befehle, Reflexion und Abnahme](../docs/deployment.md#abschliessende-abnahme-auftrag-2).
+- Der Löschtest entfernte nur die fünf eigenen Ressourcen; Standardnetz und
+  `LabInstanceProfile`/`LabRole` blieben erhalten. Die früheren IDs sind ungültig;
+  eine alte State-Sicherung darf den neuen gültigen State nicht überschreiben.
+- **Kosten:** Für Auftrag 3 laufen wieder eine micro-Instanz und ihre EIP.
+  Das ist kein endgültiges Aufräumen nach Kursende. Das aktuelle Lab-Budget ist
+  nicht gemessen; die frühere Angabe «Used $0 of $50» ist keine heutige Messung.
+  Auftrag 3 und optionale S3-Protokolle sind noch nicht implementiert.
 
 ## Auftrag 2, Teil 1: feste Adresse — 23. November 2026
 
@@ -409,10 +423,12 @@ byteidentische Sicherung des aktuellen State wurde mit Modus `0600` unter
 `~/.local/share/tictactest-iac/terraform.tfstate` ausserhalb des Repositorys
 angelegt; sie ist eine Momentaufnahme, kein automatisch aktuelles Backup.
 
-Die Instanz ist noch nicht aufgeräumt. Für Kostenkontrolle klein dimensionieren,
-das Lab-Budget beobachten und Testressourcen nach Freigabe vollständig entfernen.
-Eine reine SSH-Abmeldung beendet den Server nicht. Ein Aufräumplan und die
-Prüfung nach dessen Anwendung sind ein eigener, noch offener Lernschritt.
+Dieser Abschnitt beschreibt den ersten Apply. Der damals offene Löschtest ist
+inzwischen im [Wiederaufbau-Nachweis](../docs/deployment.md#vollständig-löschen-und-wieder-aufbauen--23-november-2026)
+tatsächlich durchgeführt; danach wurden die Ressourcen für Auftrag 3 neu erstellt.
+Für Kostenkontrolle weiterhin klein dimensionieren, das aktuelle Lab-Budget
+beobachten und nach Kursende mit Freigabe vollständig entfernen. Eine reine
+SSH-Abmeldung beendet den Server nicht.
 
 ## Historische lesende Bestandsaufnahme vor der Konfiguration
 
