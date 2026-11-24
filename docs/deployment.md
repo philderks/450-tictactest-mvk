@@ -1017,7 +1017,7 @@ Variables aktualisiert, SSM wird geprüft, Credentials bei Bedarf erneuert.
 Danach stellt ein manueller Deploy den gewünschten veröffentlichten Stand
 wieder her. Die Pipeline selbst führt dabei kein OpenTofu aus.
 
-### 8. Vorgesehene Abnahme, noch nicht durchgeführt
+### 8. Vorgesehene Abnahme (Plan; Ergebnisse in Abschnitt 16)
 
 | Versuch | Erwarteter Nachweis |
 |---|---|
@@ -1037,8 +1037,8 @@ weiterer Löschtest werden **vorher getrennt freigegeben**. Ein bereits im
 Release-Build abgefangener Fehler ist kein Ersatz für einen getesteten
 Deployment-Healthfehler. Bestehende Release-Tests werden dafür nicht heimlich
 ausgeschaltet. Zu jedem echten Versuch gehören Workflow-Link, Versionen,
-relevante PID-/Datei-/Instanzbelege und kontrollierte Logs. Noch keines dieser
-Auftrag-3-Experimente wird durch dieses Konzept als bestanden markiert.
+relevante PID-/Datei-/Instanzbelege und kontrollierte Logs. Die Ergebnisse stehen
+in Abschnitt 16.
 
 ### 9. Umgebungen und Promotion — nur Skizze
 
@@ -1303,7 +1303,7 @@ kein `plan`/`apply` ausgeführt. Private Testbelege und der reproduzierbare loka
 Testharness liegen ausserhalb von Git unter
 `~/.local/share/tictactest-iac/evidence/auftrag3-split-local-20261124/`.
 
-#### Bewusst noch nicht ausgeführte Übernahme
+#### Damals noch nicht ausgeführte Übernahme (nachgeholt, siehe Abschnitt 16)
 
 Der bestehende Host besitzt weiterhin das gekoppelte Auftrag-2-Layout. Vor einer
 Live-Übernahme müssen seine tatsächlichen Zeiger/Environmentbytes und geladenen
@@ -1519,7 +1519,48 @@ Läufe: [Rollback v1.3.0](https://github.com/philderks/450-tictactest-mvk/action
 im Erststartskript steckt. Das kommt von der Quelländerung, nicht von einem Deployment.
 Alle Deploy-Logs wurden auf Zugangsdaten, Tokens und ARNs durchsucht: kein Treffer.
 
-**Noch offen:** defekter Release und Wiederaufbau nach `tofu destroy`/`apply`.
+#### Defekter Release (Teil 5)
+
+`v1.5.1` ist ein absichtlich defekter, im Changelog markierter Testrelease: `main()`
+bricht ab, sobald ein echtes Terminal angeschlossen ist. Auf dem Runner (ohne Terminal)
+bestehen darum alle Tests und der Smoke-Test, auf der EC2 scheitert der JVM-Start. Es
+wurde kein Test abgeschaltet.
+
+| Zeit (UTC) | Beobachtung |
+|---|---|
+| 19:33:05 | Deploy-Lauf startet automatisch nach dem [Release](https://github.com/philderks/450-tictactest-mvk/actions/runs/45471262076) |
+| 19:33:44 | Backend-Version öffentlich `1.5.1` |
+| 19:33:46 | Backend wieder `1.5.0`, Console mit gestartetem Spiel |
+| 19:33:51 | [Lauf](https://github.com/philderks/450-tictactest-mvk/actions/runs/45471399805) rot: `JVM console probe failed` |
+
+Die falsche Version war rund 2 s sichtbar (Messung etwa alle 2 s), die Wiederherstellung
+erfolgte automatisch auf dem Host, 46 s nach Start des Laufs war alles abgeschlossen.
+Beide Komponenten standen danach wieder auf `1.5.0`. Der Fix `v1.5.2` wurde normal als
+Backend-only-Release ausgeliefert: [Release](https://github.com/philderks/450-tictactest-mvk/actions/runs/45473002468), [Deploy](https://github.com/philderks/450-tictactest-mvk/actions/runs/45473181056).
+
+Dabei fielen zwei Dinge auf: Das Coverage-Gate stoppte den ersten Versuch von `1.5.1`
+und `1.5.2`; es wurde mit echten Tests für `main()` und `HumanPlayer` erfüllt. Und ein
+neuer Test blockierte den Mutationstest, weil `@StdIo({})` stdin nicht ersetzt. PR #38
+war da durch einen Fehler im lokalen Warteskript schon vor dem Ende der CI nach `dev`
+gemergt. Das betraf nur `dev`, wurde mit PR #39 behoben; `main` und Tags entstanden erst
+nach grüner CI.
+
+#### Wiederaufbau nach `destroy` und `apply` (Teil 5)
+
+Geprüfter Löschplan: genau fünf eigene Ressourcen. 19:44:51 UTC `destroy` (5 gelöscht),
+19:45:35 `apply` (5 erstellt, gleiche AMI, Klasse und Subnetz), 19:45:59 fertig. Der
+SSH-Hostkey stimmte mit dem Fingerprint aus der AWS-Console-Ausgabe überein. Das
+Erststartskript richtete Java, nginx und das getrennte Layout ohne Handgriff ein; die
+Dienste waren aktiviert, aber ohne Release nicht gestartet.
+
+| Wert | Nach dem Wiederaufbau |
+|---|---|
+| GitHub-Variables | `TICTACTEST_INSTANCE_ID` und `TICTACTEST_FRONTEND_URL` neu gesetzt |
+| Secrets, Region, Konto | unverändert, noch gültig |
+| App | manueller Deploy von `v1.5.2`, SSM 12 s, beide Versionen bestätigt: [Lauf](https://github.com/philderks/450-tictactest-mvk/actions/runs/45473926753) |
+| `tofu plan` danach | keine Änderungen; die `user_data`-Abweichung ist erledigt |
+
+Von `destroy` bis zur wieder laufenden Version dauerte es rund 3 Minuten.
 
 ## Sources
 

@@ -134,10 +134,12 @@ Unter **Actions → Release** läuft jetzt der Workflow. Wenn er grün ist, ersc
 3. **Bedingungen prüfen** – Tag = `v` + Version aus `build.gradle`, Commit liegt auf `main`, Changelog-Abschnitt existiert.
 4. **Tests ausführen** – Java-Tests sowie Python- und JavaScript-Tests für Frontend, Versionsendpunkt, Startskript und Paketierung. Python 3.13 und Node.js 22 sind dafür auf dem Runner eingerichtet; Node ist keine Laufzeitvoraussetzung der statischen Webseite.
 5. **Bauen und JAR erzeugen** – `./gradlew build` (inkl. Coverage-Prüfung) erzeugt `build/libs/tictactest-X.Y.Z.jar`.
-6. **Smoke-Test** – spielt mit dem JAR ein ganzes Spiel (Züge per Pipe) und prüft, dass es mit einem Gewinner endet.
+6. **Smoke-Test** – spielt mit dem JAR ein ganzes Spiel (Züge per Pipe) und prüft, dass es mit Sieg oder Unentschieden endet.
 7. **Web-Assets paketieren** – `python3 scripts/package-web-release.py X.Y.Z build/web` erzeugt die beiden ZIP-Dateien und deren Prüfsummen. Nur eine feste Liste benötigter Dateien wird aufgenommen, nicht der gesamte Arbeitsordner.
 8. **JAR-Prüfsumme** – erzeugt `tictactest-X.Y.Z.jar.sha256`.
 9. **GitHub Release erstellen** – Titel `TicTacTest vX.Y.Z`. Der Text enthält Tag, Commit-ID, den Changelog-Abschnitt, Startvoraussetzungen und den Hinweis auf die vollständige Anleitung im Runtime-Archiv. Alle sechs Dateien werden angehängt.
+
+Nach einem erfolgreichen Release startet [deploy.yml](.github/workflows/deploy.yml) und deployt nur die geänderten Teile, siehe [docs/deployment.md](docs/deployment.md).
 
 ## Welche Assets gehören zum Release?
 

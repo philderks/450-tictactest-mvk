@@ -44,7 +44,7 @@ Frontend-Version an; es benötigt weder Framework noch Build-Schritt.
 
 Startbefehle, `config.js` und die CORS-Freigabe für getrennte Ports sind in
 [docs/webkonsole.md](docs/webkonsole.md#teil-3--statisches-frontend) beschrieben.
-Dies ist noch kein AWS-Deployment.
+Das automatische Deployment auf AWS beschreibt [docs/deployment.md](docs/deployment.md#15-deployworkflow-deployyml--24-november-2026).
 
 ## Build
 
