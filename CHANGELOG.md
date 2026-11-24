@@ -6,6 +6,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionsnu
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-11-24
+
+**Absichtlich defekter Testrelease. Nicht verwenden.**
+
+### Changed
+- Das Jar startet in einem echten Terminal nicht. Damit wird geprüft, ob das Deployment den Fehler erkennt und die vorherige Version wiederherstellt.
+
 ## [1.5.0] - 2026-11-24
 
 ### Changed
