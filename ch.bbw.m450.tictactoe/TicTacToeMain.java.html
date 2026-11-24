@@ -4,8 +4,8 @@ import java.util.Arrays;
 import java.util.NoSuchElementException;
 
 import ch.bbw.m450.tictactoe.TicTacToePlayer.Stone;
-import ch.bbw.m450.tictactoe.players.GreedyPlayer;
 import ch.bbw.m450.tictactoe.players.HumanPlayer;
+import ch.bbw.m450.tictactoe.players.PerfectPlayer;
 
 /**
  * A small tic-tac-toe board. Initially with a human and a primitive but valid computer player.
@@ -16,7 +16,7 @@ import ch.bbw.m450.tictactoe.players.HumanPlayer;
 
 	public static void main(String[] args) {
 		try {
-<span class="nc" id="L19">			play(new HumanPlayer(), new GreedyPlayer());</span>
+<span class="nc" id="L19">			play(new HumanPlayer(), new PerfectPlayer());</span>
 <span class="nc" id="L20">		} catch (NoSuchElementException e) {</span>
 <span class="nc" id="L21">			System.out.println(&quot;Input ended. Game stopped.&quot;);</span>
 <span class="nc" id="L22">		}</span>
