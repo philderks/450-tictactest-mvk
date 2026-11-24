@@ -1,7 +1,9 @@
 package ch.bbw.m450.tictactoe;
 
+import java.io.Console;
 import java.util.Arrays;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 
 import ch.bbw.m450.tictactoe.TicTacToePlayer.Stone;
 import ch.bbw.m450.tictactoe.players.HumanPlayer;
@@ -15,16 +17,21 @@ public class TicTacToeMain {
 	public static final int BOARD_SIZE = 9;
 
 	public static void main(String[] args) {
-		// Absichtlich defekter Testrelease 1.5.1 (Auftrag 3, Teil 5): scheitert nur in einem
-		// echten Terminal, also erst auf dem Server. Mit 1.5.2 wieder entfernt.
-		var console = System.console();
-		if (console != null && console.isTerminal()) {
-			throw new IllegalStateException("deliberately broken test release 1.5.1");
-		}
+		rejectTerminal(Optional.ofNullable(System.console()).map(Console::isTerminal).orElse(false));
 		try {
 			play(new HumanPlayer(), new PerfectPlayer());
 		} catch (NoSuchElementException e) {
 			System.out.println("Input ended. Game stopped.");
+		}
+	}
+
+	/**
+	 * Absichtlich defekter Testrelease 1.5.1 (Auftrag 3, Teil 5): scheitert nur in einem
+	 * echten Terminal, also erst auf dem Server. Mit 1.5.2 wieder entfernt.
+	 */
+	static void rejectTerminal(boolean terminal) {
+		if (terminal) {
+			throw new IllegalStateException("deliberately broken test release 1.5.1");
 		}
 	}
 
