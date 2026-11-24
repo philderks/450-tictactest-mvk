@@ -2,6 +2,7 @@ package ch.bbw.m450.tictactoe;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.bbw.m450.tictactoe.TicTacToePlayer.Stone;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -66,7 +67,12 @@ class TicTacToeE2ETest {
 		assertThat(out.capturedLines())
 				.filteredOn(line -> line.contains("where to put the next CROSS"))
 				.hasSize(5);
-		assertThat(out.capturedString()).contains("it's a draw!");
+		// Like a win, a draw shows the complete final board.
+		var finalBoard = new Stone[] {
+				Stone.CIRCLE, Stone.CROSS, Stone.CIRCLE,
+				Stone.CROSS, Stone.CROSS, Stone.CIRCLE,
+				Stone.CROSS, Stone.CIRCLE, Stone.CROSS };
+		assertThat(out.capturedString()).contains(TicTacToeMain.toString(finalBoard) + "it's a draw!");
 	}
 
 	@Test
