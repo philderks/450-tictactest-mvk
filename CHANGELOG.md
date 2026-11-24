@@ -6,6 +6,16 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionsnu
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-24
+
+### Added
+- Automatisches Deployment veröffentlichter Releases: Nur geänderte Komponenten werden ausgeliefert, jede veröffentlichte Version lässt sich gezielt erneut deployen.
+
+### Changed
+- Bei einem Unentschieden zeigt die Konsole wie bei einem Sieg das vollständige Schlussbrett.
+- Die Spielregeln im Frontend erwähnen das Unentschieden.
+- Für Entwickler: Der Smoke-Test im Release-Workflow hängt nicht mehr vom eingestellten Gegner ab.
+
 ## [1.2.0] - 2026-11-23
 
 ### Added

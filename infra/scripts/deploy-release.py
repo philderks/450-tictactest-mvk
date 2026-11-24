@@ -36,7 +36,7 @@ CONTENTS = {
 
 def download(url, destination):
     subprocess.run([
-        "curl", "--fail", "--location", "--retry", "3", "--connect-timeout", "15",
+        "curl", "--fail", "--silent", "--show-error", "--location", "--retry", "3", "--connect-timeout", "15",
         "--max-time", "180", "--proto", "=https", "--tlsv1.2", "--output", str(destination), url,
     ], check=True)
 

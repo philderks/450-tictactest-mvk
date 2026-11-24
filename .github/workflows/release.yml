@@ -73,9 +73,10 @@ jobs:
         env:
           JAR: build/libs/tictactest-${{ steps.version.outputs.version }}.jar
         run: |
-          # ganzes Spiel per Pipe: X gewinnt gegen den GreedyPlayer auf der Diagonale 2-4-6
-          printf '4\n8\n2\n6\n' | java -jar "$JAR" | tee smoke.log
-          grep -q 'winner is: CROSS' smoke.log
+          # ganzes Spiel per Pipe, unabhängig vom Gegner: belegte Felder werden abgewiesen,
+          # mit allen Feldern in Reihenfolge endet jede Partie mit Sieg oder Unentschieden
+          printf '%s\n' 4 8 2 6 0 1 3 5 7 | java -jar "$JAR" | tee smoke.log
+          grep -qE "winner is: (CROSS|CIRCLE)|it's a draw!" smoke.log
 
       - name: Package frontend and runtime tools
         env:
