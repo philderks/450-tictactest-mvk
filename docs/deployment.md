@@ -1049,6 +1049,15 @@ Frontendänderung -> Feature/PR -> Tests -> main -> Tag -> Release-Artefakte
   -> Release-zu-Release-Plan: Frontend -> Zeigerwechsel -> Inhalts-/Konfigtest
 ```
 
+```mermaid
+flowchart LR
+  C[Commit] --> PR[PR nach dev, CI] --> M[main] --> T[Tag vX.Y.Z] --> RL[Release: Tests, Build, Assets]
+  RL --> P{Vergleich mit vorherigem Release}
+  P -- Backend --> B[Jar + Runtime, Console-Neustart] --> BV[JVM-Start und Backend-Version]
+  P -- Frontend --> F[Frontend-Zeiger wechseln] --> FV[Frontend-Version und config.js]
+  P -- weder noch --> N[kein Deployment]
+```
+
 Build, geprüfte Komponentenwahl, Auslieferung und Healthchecks werden
 automatisiert; lokale Infrastrukturänderungen, neue Lab-Secrets und bewusst
 gewählte Releases/Rollbacks bleiben Betreiberhandlungen. Für spätere Umgebungen
@@ -1476,8 +1485,41 @@ Dauer der Aktivierung: 0,8 s. Backup auf dem Host unter
 Die Konto-ID steht als Variable sichtbar im öffentlichen Log. Sie ist kein
 Zugangsschlüssel; Secrets erscheinen nur maskiert als `***`.
 
-**Noch offen:** denselben Release nach Erneuerung der Secrets nachdeployen, danach
-Rollback, defekter Release, Wiederaufbau und die drei Release-Fälle aus Teil 6.
+| Nachdeployen: Secrets um 18:29 UTC erneuert, `v1.2.0` manuell | Grün, SSM-Befehl 4 s, beide Versionen `1.2.0` bestätigt | [Deploy-Lauf](https://github.com/philderks/450-tictactest-mvk/actions/runs/45460095862) |
+
+#### Nachweis der Trennung (Auftrag Teil 6)
+
+| Release | Änderung | Backend / Frontend danach | Läufe |
+|---|---|---|---|
+| `v1.3.0` | Beides: Schlussbrett bei Unentschieden, Regeltext, Smoke-Test | `1.3.0` / `1.3.0` | [Release](https://github.com/philderks/450-tictactest-mvk/actions/runs/45461395738), [Deploy](https://github.com/philderks/450-tictactest-mvk/actions/runs/45461563232) |
+| `v1.4.0` | Nur Frontend: grüne Akzentfarbe | `1.3.0` / `1.4.0` | [Release](https://github.com/philderks/450-tictactest-mvk/actions/runs/45462479657), [Deploy](https://github.com/philderks/450-tictactest-mvk/actions/runs/45462682936) |
+| `v1.5.0` | Nur Backend: `PerfectPlayer` in `main()` | `1.5.0` / `1.4.0` | [Release](https://github.com/philderks/450-tictactest-mvk/actions/runs/45463818382), [Deploy](https://github.com/philderks/450-tictactest-mvk/actions/runs/45464025513) |
+| Kein Tag | Push auf `main` | unverändert | siehe Tabelle oben |
+
+Auf der EC2 vor und nach `v1.4.0` verglichen: Console-PID `10617`, deren Startzeit,
+nginx-PID, Backend-Zeiger, `release.env` und Boot-ID blieben gleich, nur der
+Frontend-Zeiger änderte sich. Nach `v1.5.0` war die Console neu gestartet, nginx und
+Frontend-Zeiger blieben gleich. Jeder Deploy dauerte vom Start des Laufs bis zum Ende
+rund 30 bis 40 s, der SSM-Befehl 4 s.
+
+**Reihenfolge:** Der Smoke-Test in `release.yml` verlangte einen Sieg von X. Mit dem
+`PerfectPlayer` wäre er gescheitert, und eine Änderung an `release.yml` zählt als
+«beides». Deshalb wurde der Test in `v1.3.0` vom Gegner unabhängig gemacht.
+
+#### Rollback und Sperre (Teil 5)
+
+Zwei manuelle Läufe im Abstand weniger Sekunden: zuerst Rollback auf `v1.3.0`, dann
+`v1.5.0`. Der Deployjob des zweiten wartete (`pending`) und startete um 18:53:11 UTC,
+nachdem der erste um 18:53:06 UTC fertig war. Öffentlich sichtbar waren nacheinander
+`1.3.0`/`1.3.0` und `1.5.0`/`1.5.0`.
+Läufe: [Rollback v1.3.0](https://github.com/philderks/450-tictactest-mvk/actions/runs/45464191839), [v1.5.0](https://github.com/philderks/450-tictactest-mvk/actions/runs/45464213703).
+
+Über alle Läufe blieb der lokale OpenTofu-State byte-identisch. `tofu plan` zeigt
+0 neu, 1 geändert, 0 gelöscht: Geändert ist nur `user_data`, weil die neue `nginx.conf`
+im Erststartskript steckt. Das kommt von der Quelländerung, nicht von einem Deployment.
+Alle Deploy-Logs wurden auf Zugangsdaten, Tokens und ARNs durchsucht: kein Treffer.
+
+**Noch offen:** defekter Release und Wiederaufbau nach `tofu destroy`/`apply`.
 
 ## Sources
 
