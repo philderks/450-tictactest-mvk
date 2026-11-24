@@ -11,6 +11,9 @@ import java.util.Arrays;
 import java.util.Deque;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junitpioneer.jupiter.StdIo;
+import org.junitpioneer.jupiter.StdOut;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -62,6 +65,24 @@ class TicTacToeMainTest {
 
 		assertThatThrownBy(() -> TicTacToeMain.play(player, player))
 				.isInstanceOf(IllegalArgumentException.class);
+	}
+
+	@Test
+	@Timeout(value = 5, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+	// Not empty: an empty @StdIo would read the real stdin and block.
+	@StdIo("no number")
+	void main_stopsWithMessage_whenInputEnds(StdOut out) {
+		TicTacToeMain.main(new String[0]);
+
+		assertThat(out.capturedString()).contains("Input ended. Game stopped.");
+	}
+
+	@Test
+	void rejectTerminal_failsOnlyInATerminal() {
+		TicTacToeMain.rejectTerminal(false);
+
+		assertThatThrownBy(() -> TicTacToeMain.rejectTerminal(true))
+				.isInstanceOf(IllegalStateException.class);
 	}
 
 	@Test
