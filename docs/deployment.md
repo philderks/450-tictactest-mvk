@@ -1314,7 +1314,7 @@ den zukünftigen App-Deployworkflow. Release-Planer, Workflowverdrahtung,
 Runner-Credentials-/SSM-Nachweis, freigegebene Promotion und die echte
 Release-Abnahmematrix bleiben die nächsten getrennten Schritte.
 
-### 14. Release-Planer — lokale Implementierung, noch nicht abgenommen
+### 14. Release-Planer — 24. November 2026
 
 Diese Etappe implementiert nur die **Entscheidungsschicht**, nicht den
 Deployworkflow. Der Planer soll auf einem vertrauenswürdigen aktuellen Checkout
@@ -1369,12 +1369,29 @@ Plugin-/Dependency-Upgrades oder sonstige zusätzliche Änderungen bleiben
 Backendänderungen. Im manuellen Modus werden nach derselben Zielvalidierung
 bewusst beide Komponenten gewählt, auch bei einem älteren unterstützten Release.
 
-**Abnahme noch offen:** echte read-only CLI-Aufrufe für veröffentlichte Tags,
-Regressionen, unabhängige Reviews und der Feature-PR. Die Umsetzung läuft lokal;
-keine dieser Prüfungen wird hier bereits als durchgeführt ausgegeben. Der
-spätere Deployworkflow und seine vier echten Release-Abnahmefälle bleiben
-separate Schritte. Insbesondere beweist ein Plan noch keinen Runner-Zugriff,
-keine passende aktive Komponentenbasis und kein durchgeführtes Deployment.
+**Tatsächlich lokal ausgeführt:** 75 Python-Tests unter `scripts/tests/`
+(einschliesslich der neuen Klassifikations-/Planertests), 118 Infrastrukturtests
+und 4 Frontendtests sind grün. Die vier neuen Pythondateien bestehen die
+Python3.9-AST-Prüfung; dies ist keine Python3.9-Laufzeitzertifizierung.
+
+Die CLI wurde zusätzlich ohne API-Fixtures gegen die echten vorhandenen
+veröffentlichten Releases ausgeführt:
+
+| Read-only Aufruf | Beobachtetes Ergebnis |
+|---|---|
+| `v1.2.0 --mode auto` | Vorgänger `v1.1.0`; nur Frontend; der reine `build.gradle`-Versionsbump zählt als Metadaten. Zielcommit `ce8586372128ba7040748598eb5c3c227c292536` ist gegen Remote-Tag/Main geprüft. |
+| `v1.1.0 --mode manual` | Beide Komponenten, ohne geratenen Vorgänger; Zielcommit `1ea23ba075fce9cc9ea09061ee0e272b2f63a45b`. |
+| `v1.0.1 --mode manual` | Exit1 und leeres JSON-stdout; der historische Release erfüllt den sechs-Dateien-Paketvertrag nicht. Kein Nachbau fehlender Assets. |
+
+Die echten JSON-/Fehlerausgaben und der Zustandsvergleich liegen privat unter
+`~/.local/share/tictactest-iac/evidence/auftrag3-planner-20261124/`. State und
+Remote-Tags sind unverändert. Ein Review fand drei Lücken (mehrdeutige
+Versionszuweisungen, unlesbare Git-Objekte, doppelte Anführungszeichen); sie sind
+behoben und mit Regressionstests sowie separaten Probes nachgeprüft. Ein Klon mit
+absichtlich gelöschtem `build.gradle`-Objekt endet mit Exit 1 ohne Plan. Der spätere Deployworkflow und seine vier echten Release-Abnahmefälle
+bleiben separate Schritte. Insbesondere beweist ein Plan noch keinen
+Runner-Zugriff, keine passende aktive Komponentenbasis und kein durchgeführtes
+Deployment.
 
 ## Sources
 
