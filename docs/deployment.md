@@ -7,6 +7,12 @@ Release `1.2.0` läuft öffentlich auf der vollständig neu aufgebauten EC2 und
 HTTP ist ausdrücklich freigegeben, HTTPS noch nicht eingerichtet. Die frühen
 Abschnitte sind historische Zwischenstände; die abschliessende Abnahme steht unten.
 
+**Lokaler Codecheckpoint vom 24. November 2026:** Der aktuelle Deployer verwendet
+getrennte Komponenten. Die folgende historische Auftrag-2-Anleitung beschreibt
+den damals gekoppelten Deployer; sie ist **keine Migrationsanleitung** für die
+laufende Instanz. Vor einer Nutzung des neuen Codes Abschnitt 13 beachten.
+Die Live-Umstellung und der automatische Deployworkflow bleiben offen.
+
 ## Einordnung und bewusste Grenze
 
 Dies ist die erste manuelle EC2-Deployment-Etappe aus Webapp-Auftrag 2, nicht
@@ -1182,6 +1188,131 @@ einer neuen Lab-Session muss der aktuelle, vollständige Credential-Satz erneut
 gezielt freigegeben und geschützt aktualisiert werden; ein früherer erfolgreicher
 Upload beweist keine spätere Gültigkeit. Nach einem Hostersatz müssen zusätzlich
 Instanz-ID und Frontend-URL in den Variables erneuert werden.
+
+### 13. Lokaler Split-Deployer — 24. November 2026
+
+**Umfang:** Quellcode und isolierte lokale Tests, keine Live-Migration, keine
+SSM-Schreiboperation, keine Main-Promotion und kein neuer Release. Die bisherigen
+Auftrag-2-Nachweise bleiben historische Nachweise des gekoppelten Layouts.
+
+#### Auswahl und Bedienung nach vorbereiteter Split-Einrichtung
+
+```text
+/opt/tictactest/current          -> deployments/backend/VERSION
+/opt/tictactest/frontend-current -> deployments/frontend/VERSION
+/etc/tictactest/release.env      -> absoluter JAR_PATH des gewählten Backends
+```
+
+Backendcache: unverändertes veröffentlichtes Jar plus dazugehöriges Runtime-ZIP;
+Frontendcache: unveränderte Inhalte des Frontend-ZIPs. Ein kanonischer Receipt
+bindet Dateimenge und Hashes. Sichere vorhandene Caches werden erneut ausgewählt;
+manipulierte, zusätzliche, verlinkte oder unvollständige Inhalte werden abgewiesen,
+nicht durch Löschen und erneutes Herunterladen «repariert». Alte `releases/`
+bleiben erhalten. nginx liefert `/config.js` aus einer exakten, infraeigenen Route
+mit `no-store` und `X-TicTacTest-Layout: split-v1`, nicht aus dem Frontendarchiv.
+
+Erst **nach** gesondert vorbereiteter und geladener Split-Konfiguration:
+
+```bash
+# Auf dem vorbereiteten Zielhost, nicht als sofortiger Migrationsschritt:
+sudo bash deploy-release.sh 1.2.0                       # Standard: beide
+sudo bash deploy-release.sh 1.2.0 --components frontend # zwei Assets
+sudo bash deploy-release.sh 1.2.0 --components backend  # vier Assets
+# Vorhandene veröffentlichte Version bewusst erneut auswählen:
+sudo bash deploy-release.sh 1.1.0 --components both
+```
+
+Alle ausgewählten Prüfsummen bestehen vor dem Entpacken. Der vollständige
+Erstdeploy benötigt beide Komponenten. Ungültige Versionen, unsichere Dateipfade,
+fehlende Split-Auswahl oder eine noch nicht geladene Proxy-Konfiguration brechen
+ab. Frontend-only verändert weder Backendzeiger noch Environment und startet
+auch im Fehlerpfad keine Unit neu. Backend-only startet nur die Console neu;
+der laufende nginx liest die neue Dateiauswahl ohne Neustart.
+
+Die Aktivierung hält einen exklusiven Hostlock. Bei Fehlern stellt sie die rohen
+vorherigen Symlinkziele und die exakten Environmentbytes wieder her und prüft das
+vorherige **gemischte Tupel**. Ein erfolgreicher Rollback lässt das ursprüngliche
+Deployment trotzdem fehlschlagen; ein zusätzlicher Rollbackfehler wird getrennt
+angezeigt. Beim fehlgeschlagenen Erstdeploy werden nur durch diesen Versuch
+aktivierte Units gestoppt; vorbereitete Caches bleiben zur Diagnose erhalten.
+
+#### Echter JVM-Start statt nur Metadaten
+
+`console-smoke.py` ist ein benachbarter operativer Helper, kein neues
+App-Releaseasset. Er öffnet eine eigene ttyd-Sitzung mit Token-/WebSocket-/Origin-
+Handshake und akzeptiert erst den vollständigen tatsächlichen CROSS-Eingabeprompt.
+Er sendet keine Spielzüge und schliesst seine Sitzung auf Erfolgs- und Fehlerpfaden.
+URL, DNS/TLS, HTTP und Frames sind validiert und zeit-/grössenbegrenzt; keine
+Proxy-Umleitung, keine ungeprüften Redirects und keine Tokens im Diagnoseoutput.
+Nur Backend-/Both-Aktivierungen starten diesen Check, Frontend-only nicht.
+Die Gesundheitsprüfung hat ein begrenztes Gesamtzeitbudget, prüft unabhängige
+Versionen und die tatsächlichen Listener. Korrekte Versionsdateien allein sind
+kein erfolgreicher JVM-Start.
+
+#### Tatsächlich lokal ausgeführte Nachweise
+
+Ein isolierter Test lief als normaler Benutzer mit unveränderten veröffentlichten
+Assets `v1.1.0` und `v1.2.0`, geprüftem ttyd1.7.7, Corretto25 und echtem nginx1.30.6.
+Der offizielle nginx-Testcontainer war per Digest gebunden, nonroot, ohne
+Capabilities, mit schreibgeschütztem Root-Dateisystem und nur dem Testverzeichnis
+als Bindmount. Er verwendete neue Loopbackports, nicht die vorhandenen Previews.
+
+| Fall | Beobachtetes Ergebnis |
+|---|---|
+| Erstdeploy `1.1.0`, beide | Sechs echte Releaseassets, echte HTTP-Routen und erfolgreicher neuer Smoke-CLI-Aufruf |
+| Frontend `1.2.0`, Backend `1.1.0` | Nur zwei Assets; Backend-PID, Zeiger und Environment unverändert; dieselbe zuvor begonnene echte JVM-Partie mit `4`, `2`, `6` endet nach dem Wechsel mit CROSS |
+| Backend `1.2.0` | Vier Assets, passende Runtime; Frontendzeiger und nginx-Prozess bleiben erhalten |
+| Backend zurück auf `1.1.0` | Geprüfter Cache wiederverwendet, kein Download; Frontend bleibt `1.2.0` |
+| Absichtlich defektes lokales Test-Jar `9.9.9` | Korrekte Checksummen und Manifest-/HTTP-Version, aber nicht vorhandene Main-Klasse: echter JVM-Check scheitert; vorheriges Tupel Backend `1.1.0` / Frontend `1.2.0` inklusive Environment wird wiederhergestellt und erneut erfolgreich geprüft; Gesamtdeploy bleibt fehlgeschlagen |
+| Beide zurück auf `1.1.0` | Beide vorhandenen Caches erneut ausgewählt, keine Releaseverzeichnisse gelöscht oder Assets neu geladen |
+| Cleanup | Eigener ttyd und Testcontainer beendet; alle drei temporären Listener geschlossen |
+
+`9.9.9` ist ausdrücklich ein synthetisches Fehler-Testartefakt, **kein GitHub-
+Release** und keine Behauptung, dass ein veröffentlichtes Jar defekt sei.
+Der Test ersetzt lediglich Root-Freigabegate, Produktionspfade/-ports,
+Artefakttransport durch einen geprüften lokalen Assetspiegel und systemd durch
+einen Supervisor eigener echter Prozesse. Dateitransaktionen, Prüfungen, nginx,
+ttyd, Java und der neue Smokeclient laufen wirklich. Das beweist lokale
+Integration, nicht EC2/systemd-/SSM-/Runner-Abnahme oder eine Browser-UI-Abnahme.
+Eine zusätzliche echte nginx-Parser-/HTTP-Fixture bestätigt, dass verpacktes
+`config.js` die infraeigene Route nicht überschreibt und der Frontendzeiger ohne
+nginx-Neustart gewechselt werden kann.
+
+Die Regressionen bestehen mit **118 Infrastruktur-/Smoke-, 10 Support- und
+4 Frontendtests**. Selektive Deployments prüfen die Eigentümer, `0755`-Rechte und
+Symlinkfreiheit der Vorordner **beider** bestehenden Komponenten, einschliesslich
+Legacy-Auswahlen, bevor sie deren Inhalte vertrauen. Unsichere Vorordner werden
+nicht repariert. Zusätzliche Regressionen sichern die gemeinsame Deadline
+inklusive Opener-/TLS-Initialisierung und private DNS-Fehler ohne Threadtraceback.
+Nicht abbrechbare DNS-/TLS-Setupworker dürfen nach einem Timeout nur Setup
+abschliessen, niemals verspätet einen Socket öffnen oder einen Handshake starten.
+Python3.9-AST-Prüfung der beiden operativen Pythonhelper,
+Bashsyntax und `tofu fmt -check`/`validate` bestehen. Das echte, isolierte
+OpenTofu-Rendering ohne Provider-/Cloudzugriff erzeugt **8.649 Bytes** User Data,
+mit gültiger Bashsyntax und unveränderten eingebetteten Quelldateien. Es wurde
+kein `plan`/`apply` ausgeführt. Private Testbelege und der reproduzierbare lokale
+Testharness liegen ausserhalb von Git unter
+`~/.local/share/tictactest-iac/evidence/auftrag3-split-local-20261124/`.
+
+#### Bewusst noch nicht ausgeführte Übernahme
+
+Der bestehende Host besitzt weiterhin das gekoppelte Auftrag-2-Layout. Vor einer
+Live-Übernahme müssen seine tatsächlichen Zeiger/Environmentbytes und geladenen
+Dateien gesichert werden. In einem gesondert freigegebenen Schritt sind der
+Frontendzeiger auf den bestehenden Release, die geprüfte neue nginx-Konfiguration
+und ihre kontrollierte Aktivierung vorzubereiten. Die drei operativen Dateien
+`deploy-release.sh`, `deploy-release.py` und `console-smoke.py` müssen benachbart
+übertragen werden. Der neue Deployer migriert eine laufende Legacy-Installation
+**nicht automatisch** und benötigt eine geladene Split-Konfiguration als Beweis.
+
+Eine geänderte Bootstrapquelle ändert ausserdem das nächste User-Data-Rendering.
+Das ist noch keine Gastkonfigurationsänderung; ein späteres lokales
+Infrastruktur-Reconciliation muss bewusst geplant und geprüft werden, weil das
+Anwenden geänderter User Data Stop/Start auslösen kann und cloud-init beim
+vorhandenen Host nicht automatisch erneut läuft. Kein solches Apply gehört in
+den zukünftigen App-Deployworkflow. Release-Planer, Workflowverdrahtung,
+Runner-Credentials-/SSM-Nachweis, freigegebene Promotion und die echte
+Release-Abnahmematrix bleiben die nächsten getrennten Schritte.
 
 ## Sources
 
