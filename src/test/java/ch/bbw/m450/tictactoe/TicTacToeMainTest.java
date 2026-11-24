@@ -65,6 +65,14 @@ class TicTacToeMainTest {
 	}
 
 	@Test
+	void rejectTerminal_failsOnlyInATerminal() {
+		TicTacToeMain.rejectTerminal(false);
+
+		assertThatThrownBy(() -> TicTacToeMain.rejectTerminal(true))
+				.isInstanceOf(IllegalStateException.class);
+	}
+
+	@Test
 	void play_withTwoGreedyPlayers_producesDeterministicCrossWin() {
 		// GreedyPlayer always fills the first free field: X takes 0,2,4,6 and
 		// wins via the 2-4-6 anti-diagonal before O gets to move a 4th time.
