@@ -6,6 +6,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionsnu
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-24
+
+### Changed
+- Die Akzentfarbe des Frontends ist neu Grün statt Blau. Das Backend bleibt unverändert.
+
 ## [1.3.0] - 2026-11-24
 
 ### Added

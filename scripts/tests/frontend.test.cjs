@@ -66,9 +66,9 @@ test('a failed backend version does not hide the frontend version or game', asyn
   assert.match(elements.notice.textContent, /Netzwerk|CORS/);
 });
 
-test('release B shares its blue accent across heading, links and field numbers', () => {
+test('the page shares one green accent across heading, links and field numbers', () => {
   const css = fs.readFileSync(path.resolve(__dirname, '../../frontend/style.css'), 'utf8');
-  assert.match(css, /--accent:\s*#a8cef4;/);
+  assert.match(css, /--accent:\s*#a9e5b4;/);
   assert.match(css, /h1 \{[^}]*color:\s*var\(--accent\)/);
   assert.match(css, /a \{[^}]*color:\s*var\(--accent\)/);
   assert.match(css, /\.positions \{[^}]*color:\s*var\(--accent\)/);
