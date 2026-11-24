@@ -7,6 +7,12 @@ Release `1.2.0` läuft öffentlich auf der vollständig neu aufgebauten EC2 und
 HTTP ist ausdrücklich freigegeben, HTTPS noch nicht eingerichtet. Die frühen
 Abschnitte sind historische Zwischenstände; die abschliessende Abnahme steht unten.
 
+**Lokaler Codecheckpoint vom 24. November 2026:** Der aktuelle Deployer verwendet
+getrennte Komponenten. Die folgende historische Auftrag-2-Anleitung beschreibt
+den damals gekoppelten Deployer; sie ist **keine Migrationsanleitung** für die
+laufende Instanz. Vor einer Nutzung des neuen Codes Abschnitt 13 beachten.
+Die Live-Umstellung und der automatische Deployworkflow bleiben offen.
+
 ## Einordnung und bewusste Grenze
 
 Dies ist die erste manuelle EC2-Deployment-Etappe aus Webapp-Auftrag 2, nicht
@@ -741,3 +747,735 @@ eine micro-Instanz und ihre EIP; der Budgetverbrauch geht weiter. Screenshots,
 API-/Terminalnachweise und private Sicherungen liegen ausserhalb von Git unter
 `~/.local/share/tictactest-iac/evidence/`. Auftrag 3 ist damit vorbereitet, aber
 seine automatisierte Deployment-Pipeline ist noch nicht implementiert.
+
+## Auftrag 3: Deployment-Konzept — freigegeben, 24. November 2026
+
+**Status:** Der Nutzer hat das Konzept freigegeben. Der erste Umsetzungsschritt
+hat SSM-Befehlsausführung und Ergebnisabfrage mit einem echten reinen Lesebefehl
+nachgewiesen; siehe Abschnitt 11. Dies ist noch keine Deployment-Pipeline.
+Release `1.2.0` läuft unverändert. Das auf `main` beschränkte Environment samt
+drei Secrets und vier Variables ist nach gesonderter Freigabe eingerichtet;
+siehe Abschnitt 12. Der Deployworkflow ist geschrieben und lokal geprüft
+(Abschnitt 15), aber noch nicht auf `main` und noch nie auf einem Runner
+gelaufen; kein Pipeline-Deployment, Dienstneustart oder Apply ausgeführt.
+
+### 1. Entscheidung: GitHub Actions steuert die EC2 über SSM
+
+GitHub-gehostete Runner verwenden AWS Systems Manager Run Command statt SSH.
+Damit braucht die Pipeline keinen privaten SSH-Schlüssel und keine Öffnung von
+Port 22 für wechselnde Runner-Adressen. Die vorhandene SSH-Regel bleibt für
+manuelle Administration beschränkt. Ein harmloser SSM-Befehl samt Ergebnisabfrage
+mit der tatsächlichen Lab-Identität ist inzwischen erfolgreich geprüft. Diese
+Prüfung wird bei der späteren Runner-Einrichtung wiederholt; bei fehlenden
+Rechten wird nicht einfach die Firewall aufgeweicht.[8]
+
+Zwei Identitäten bleiben getrennt: Der Runner nutzt die temporären
+Learner-Lab-Zugangsdaten; SSM-Agent und EC2 nutzen das vorhandene
+`LabInstanceProfile`/`LabRole`. Runner-Credentials werden nicht auf die EC2
+kopiert. Die Instanz lädt die ausdrücklich gewählten **öffentlichen**
+GitHub-Release-Assets ohne zusätzliches GitHub-Secret. Für ein privates Repo
+müsste der Artefaktzugriff separat entworfen werden.
+
+### 2. Secrets, Variables und Ablauf der Lab-Zugangsdaten
+
+Eingerichtet ist das GitHub Environment **`learner-lab`** mit einer
+Deployment-Branchregel ausschliesslich für `main`. Der zukünftige vertrauenswürdige
+Deployjob wird es ausdrücklich referenzieren; PR-Tests und Release-Build benötigen
+keine AWS-Secrets. Secrets werden verschlüsselt gespeichert und dem Job nur
+über ausdrücklich verwendete Inputs/Umgebungsvariablen bereitgestellt.[4]
+
+| Name | Ablage | Herkunft/Zweck |
+|---|---|---|
+| `AWS_ACCESS_KEY_ID` | Environment Secret | Aktueller temporärer Lab-Credential-Satz |
+| `AWS_SECRET_ACCESS_KEY` | Environment Secret | Derselbe Satz; niemals Repo-/Log-Inhalt |
+| `AWS_SESSION_TOKEN` | Environment Secret | Derselbe Satz, bei temporären Credentials erforderlich |
+| `AWS_REGION` | Environment Variable | Tatsächlich verwendete Lab-Region |
+| `AWS_ACCOUNT_ID` | Environment Variable | Erwartetes Zielkonto als Verwechslungsschutz, kein Zugangsschlüssel |
+| `TICTACTEST_INSTANCE_ID` | Environment Variable | Aus `tofu output -raw instance_id` |
+| `TICTACTEST_FRONTEND_URL` | Environment Variable | Aus `tofu output -raw frontend_url` |
+| `GITHUB_TOKEN` | Automatisch von GitHub | Nur nötige Repo-Leserechte im Deployworkflow; kein manuell angelegter PAT |
+
+Variables werden als nicht vertrauliche Konfiguration behandelt. Keine Tokens,
+Passwörter oder privaten Schlüssel hineinlegen. Die tatsächlichen Werte stehen
+nicht in diesem Dokument. Die Lab-Credentials stammen aus der Lab-Oberfläche,
+nicht aus dem Instance Profile. Ihre konkrete Gültigkeit richtet sich nach der
+aktuellen Sitzung/AWS-Ablaufzeit; es wird keine feste Laufzeit erfunden.
+
+**Erneuerung und Fehlerfälle:**
+
+1. Nach einer neuen Lab-Session aktualisiert der Betreiber alle drei Secrets als
+   zusammengehörigen Satz in GitHub, bevor ein Release-/Deploylauf gestartet wird.
+   Kein Copy/Paste in Chat, Git, Workflow-YAML oder öffentliche Terminalausgabe.
+2. Der Deployjob prüft zuerst STS-Identität, erwartetes Konto/Region und den
+   Zielhost/SSM-Status. Abgelaufene, fehlende oder gemischte Credentials lassen
+   den Job **vor** dem Senden einer Deploymentanweisung fehlschlagen. Die laufende
+   App bleibt in diesem Fall unberührt; der Release bleibt veröffentlicht.
+3. Nach Erneuerung wird der vorhandene Release gezielt per manuellem Deploylauf
+   nachgeholt. Kein neuer Tag, kein Verschieben alter Tags, kein erneuter Build.
+4. Laufen Credentials **nach** Annahme eines SSM-Befehls ab, kann der Befehl auf
+   EC2 weiterlaufen. Der Job darf daraus weder Erfolg noch unveränderten Zustand
+   ableiten: `CommandId` sichern, nach Erneuerung genau diesen Auftrag und die
+   tatsächlich laufenden Versionen prüfen, erst danach erneut deployen.
+5. Keine interaktiven Geheimniswerte in Logs: kein `set -x`, `env`/`printenv`,
+   kein Echo der Credentials und keine Credential-JSON-Dateien als Artefakte.
+   Automatische Maskierung ist keine Garantie für abgeleitete/transformierte
+   Werte; zusätzliche vertrauliche Ausgaben werden vorab maskiert. Nach jedem
+   Lauf Logs kontrollieren, besonders bei Fehlern.[3][5]
+
+**Wer darf zugreifen?** Nur freigegebene Deployjobs erhalten Environment-Secrets.
+Gespeicherte Secret-Werte sollen nicht ausgelesen werden; Personen mit Einfluss
+auf ausführbare Workflows können sie aber indirekt missbrauchen. Deshalb nur
+vertrauenswürdiger `main`-Code, Review von Workflowänderungen, minimale
+Job-Permissions und keine Secret-Freigabe an PR-/Fork-Code. Fork-PRs erhalten
+standardmässig keine solchen Secrets; diese Schutzgrenze wird nicht durch
+`pull_request_target` oder unkontrolliertes `workflow_run` umgangen.[3][5]
+
+**Bei einem Leak:** Deployments stoppen, betroffene GitHub-Secrets entfernen/
+ersetzen, Log-/Artefakt-Lecks beseitigen, AWS-Aktivitäten prüfen und den
+Lab-Betreiber einbeziehen. Mit Lab-Rechten können je nach Berechtigungen Daten
+und Ressourcen gefährdet sowie Budget verbraucht werden. Lab-Ende ist kein
+hier behaupteter garantierter Sofortwiderruf bereits ausgegebener Tokens;
+verfügbare Widerrufsmassnahmen und Restgültigkeit müssen geklärt werden.
+
+**Unternehmen statt Learner Lab:** GitHub OIDC gegen eine eng begrenzte
+AWS-Deployrolle, kurzlebige STS-Sessions statt gespeicherter AWS-Schlüssel.
+Trust Policy auf tatsächliche Repo-/Environment-Identität (`sub`) und passende
+Audience beschränken; `id-token: write` nur für den Deployjob. Aktuelle
+Subject-Formate können unveränderliche Repo-/Owner-IDs enthalten: keine alte
+Beispiel-Trust-Policy blind übernehmen. Mit Environment muss auch dessen Name
+zur Subject-/Schutzregel passen. Im Lab werden dafür keine eigenen
+IAM-Rollen/Policies/Provider angelegt.[6]
+
+### 3. Trigger: erst veröffentlichen, dann deployen
+
+`release.yml` bleibt für Tagprüfung, Tests, Build und Veröffentlichung zuständig.
+Ein neues `deploy.yml` reagiert auf den erfolgreichen Abschluss von **`Release`**
+über `workflow_run`, zusätzlich auf `workflow_dispatch` mit einem veröffentlichten
+Tag als Eingabe. Kein Deploy bei normalem Push auf `main` und kein PR-Deploy.
+
+Der Grund für diese Verkettung: Ein vom bestehenden Workflow mit `GITHUB_TOKEN`
+erstellter Release startet nicht einfach einen zweiten `release: published`-
+Workflow. Dafür wird kein unnötiger langlebiger PAT eingeführt.[1]
+`workflow_run` benötigt den Deployworkflow auf dem Default-Branch; das wird
+vor den echten Release-Experimenten bewusst per PR bereitgestellt.[2]
+
+Der automatische Eingang wird eng geprüft: Quellworkflow erfolgreich, eigenes
+Repo, zulässiger Taglauf, strikt validiertes `vMAJOR.MINOR.PATCH`, Tag-Commit
+passt zum Quelllauf und liegt auf freigegebenem `main`, dazu ein tatsächlich
+veröffentlichter Nicht-Draft-Release mit den erwarteten Assets. Ein erfolgreicher
+oder übersprungener Branchlauf ohne passenden Release genügt nicht.
+
+Deploywerkzeuge kommen vom vertrauenswürdigen, festgehaltenen Workflow-/Main-
+Commit, **nicht** aus beliebigem PR-Code oder dem alten Rollback-Tag. Der
+Zieltag ist Dateninput, kein ausführbarer Shelltext. Manuelle Läufe werden nur
+vom freigegebenen `main` gestartet. Das ist wegen der höheren Privilegien von
+`workflow_run` eine Sicherheitsgrenze, keine reine Bequemlichkeitsfrage.[2][3]
+
+### 4. Änderungen zwischen veröffentlichten Releases erkennen
+
+Der automatische Plan vergleicht den Zieltag mit dem vorherigen veröffentlichten
+stabilen Release-Tag, nicht mit `HEAD~1` und nicht blind mit `releases/latest`.
+Für unsere fortlaufenden Main-Releases wird der höchste kleinere SemVer-Release
+gewählt und seine Abstammung zum Ziel geprüft. Unklare/divergente Reihenfolgen
+führen zu einer Fehlermeldung statt zu einem geratenen Basistag. Release-Listen
+werden vollständig paginiert gelesen; reine Git-Tags ohne Release zählen nicht.
+Beim allerersten Release ohne Vorgänger werden beide Komponenten gewählt.
+
+`fetch-depth: 0` liefert die Historie. Ein expliziter Git-Diff berücksichtigt
+Löschungen und beide Seiten von Umbenennungen; Pfade werden nicht als Shellcode
+verarbeitet. Event-`paths`-Filter ersetzen diesen Release-zu-Release-Vergleich
+nicht. Unbekannte relevante Pfade lassen den Planer zur bewussten Einordnung
+fehlschlagen statt versehentlich «keine Änderung» zu liefern.
+
+| Pfad/Änderung | Automatische Auswahl |
+|---|---|
+| `src/main/**` | Backend |
+| `frontend/**` | Frontend |
+| `scripts/start-console.sh`, `backend-version.py`, `serve-backend-version.py`, `runtime-README.md` jeweils unter `scripts/` | Backend samt Runtime-Werkzeugen |
+| Funktionale Build-/Dependency-/Toolchainänderung in `build.gradle`, Gradle-Wrapper oder Build-Konfiguration | Backend |
+| `scripts/package-web-release.py`, `.github/workflows/release.yml` | Beide: können beide ausgelieferten Pakete beeinflussen |
+| `src/test/**`, `src/e2eTest/**`, `scripts/tests/**`, `infra/tests/**`, reine CI-Tests | Kein App-Deploy; Tests müssen trotzdem bestehen |
+| `README.md`, `CHANGELOG.md`, `docs/**`, reine Repo-Metadaten | Kein App-Deploy |
+| `infra/**` ausser Tests, dazu `scripts/plan-release-deploy.py` und `.github/workflows/deploy.yml` | Betrieb separat prüfen; kein heimliches `tofu apply` und kein automatischer App-Neubau |
+
+**Entscheidende Ausnahme:** Eine ausschliessliche Änderung der einen geprüften
+`version = '…'`-Zuweisung in `build.gradle` ist Release-Metadaten und zählt nicht
+als Backendänderung. Nur wenn der übrige Build-Dateiinhalt unverändert ist,
+gilt diese Ausnahme. Plugin-/Dependency-Versionen werden nicht pauschal
+herausgefiltert. Sonst würde jeder Frontend-Release wegen seines Versionsbumps
+auch das Backend neustarten. Ebenso entscheiden nicht die geänderten generierten
+Jar-/ZIP-Hashes allein: Manifest und Versionsdatei werden bei jedem Release neu
+beschriftet, auch wenn nur eine Komponente automatisch auszuliefern ist.
+
+### 5. Zwei Auswahlzeiger statt gekoppeltem Deployment
+
+Der heutige Deployer schaltet beide Teile gemeinsam um, prüft beide auf dieselbe
+Version und verweigert vorhandene Versionsordner. Das genügt **noch nicht** für
+getrennte Releases oder wiederholbare Rollbacks. Vorgesehen ist:
+
+```text
+/opt/tictactest/current          -> deployments/backend/<Backend-Version>/
+/opt/tictactest/frontend-current -> deployments/frontend/<Frontend-Version>/
+Backend-Paket: Jar + dazugehöriges runtime/ aus genau diesem Release
+Frontend-Paket: frontend/ aus genau diesem Release
+```
+
+Der bestehende `current`-Name bleibt für Backend/Console kompatibel. nginx
+liefert zukünftig aus `frontend-current/frontend`. Verifizierte Komponenten
+liegen getrennt und unveränderlich unter `deployments/`; alte `releases/`
+werden nicht gelöscht, um eine Immutable-Prüfung zu umgehen. Eine bereits
+vorbereitete Version darf nach Integritätsprüfung wieder ausgewählt werden.
+Bei abweichenden Inhalten wird nicht still überschrieben.
+
+Die öffentliche `config.js` wird als exakte nginx-Route aus der
+Infrastrukturkonfiguration bedient, mit den relativen Console-/Versionsrouten.
+Die Datei im Frontend-Archiv überschreibt diese Route nicht. Damit ist die
+Konfiguration unabhängig vom ausgetauschten Frontend-Verzeichnis. Vor dem
+Pipelinebetrieb werden Zeiger und nginx-Konfiguration kontrolliert auf den
+bestehenden `1.2.0`-Stand umgestellt. Das ist ein separat geprüfter lokaler
+Betriebsschritt, kein Apply aus GitHub Actions. Die einmalige cloud-init-
+Semantik aus Auftrag 2 bleibt dabei zu berücksichtigen.
+
+| Auswahl | Änderung an der Umgebung | Prüfung |
+|---|---|---|
+| Nur Frontend | Frontend-Zeiger tauschen; keine Console-/Backend-Neustarts | Neue Frontend-Version/Inhalt, alte Backend-Version und derselbe Console-PID |
+| Nur Backend | Jar + passende Runtime wählen, `release.env`/Backend-Zeiger umstellen, nur Console neustarten | Neue echte Manifest-Version, unveränderte Frontend-Auswahl und deren Dateiinhalte |
+| Beide | Beide Auswahlzustände koordiniert ändern | Beide Zielversionen und funktionierende Console/Seite |
+| Weder noch | Kein SSM-Deployauftrag, kein Secret-Zugriff nötig | Expliziter No-op mit Begründung im Lauf |
+
+Es gibt keine App-Builds auf EC2 oder im Deployjob. Gewählte veröffentlichte
+Assets werden heruntergeladen, vor Nutzung geprüft und sicher entpackt. Der
+Deployer behält SHA-Prüfung, ZIP-Allowlist, Manifestprüfung, Nicht-root-Dienste
+und die tatsächliche Listenerkontrolle aus Auftrag 2 bei. Download/Prüfung
+fehlschlagen zu lassen darf noch keinen laufenden Zeiger verändern.
+
+### 6. Erfolg, Serialisierung und Fehlerbehandlung
+
+Eine gemeinsame Concurrency-Gruppe `tictactest-learner-lab` schützt automatische
+und manuelle Deployments. Vorgesehen sind `cancel-in-progress: false` und die
+aktuell dokumentierte Warteschlange `queue: max`, plus der lokale Dateilock auf
+EC2. Ohne Queue-Einstellung kann ein neuer wartender Lauf einen älteren
+wartenden Lauf verdrängen. Auch mit Queue wird Reihenfolge nicht aus der
+Release-Publikationszeit abgeleitet; diese Annahme wird nicht als Garantie
+verkauft.[7]
+
+Vor selektiven Updates wird deshalb auch geprüft, ob der tatsächliche
+Komponentenzustand zur Quellbasis passt. Unterschiedliche Frontend-/Backend-
+Versionsnummern sind dabei erlaubt. Ein ausgelassener Vorgänger oder falscher
+Zielhost darf nicht als erfolgreicher selektiver Deploy durchgehen. Bei einer
+Lücke: klar fehlschlagen und einen ausdrücklich gewählten vollständigen
+manuellen Deploy nutzen, statt ungeändert deklarierte Komponenten heimlich
+mitzudeployen. Kein automatisches Downgrade durch verspätete alte Läufe.
+
+SSM-Annahme ist noch kein Befehlserfolg: auf genau `CommandId` und Instanz
+pollen, terminalen Status und Exitcode prüfen. Anfangs noch nicht sichtbare
+Invocation darf wegen der API-Eventual-Consistency begrenzt wiederholt werden;
+Denied, Timeout und echte Befehlsfehler werden nicht weggeschluckt.[8][9]
+Danach Versionen über HTTP prüfen. Beim Backendwechsel reicht eine passende
+`backend-version.txt` **nicht** als JVM-Startnachweis: Die Datei kann schon vor
+einem fehlgeschlagenen Spielstart erzeugt worden sein. Eine kurze echte Console-
+WebSocket-Sitzung muss den laufenden Java-Spielprompt bestätigen; der Testclient
+wird anschliessend auch im Fehlerfall geschlossen. Ein Jar mit korrekter
+Prüfsumme/Versionsmetadaten, das sich nicht starten lässt, muss hier scheitern.
+Beim Frontend-only-Deploy wird dafür nicht die laufende Backend-Sitzung ersetzt.
+Geplant ist eine echte Health-Deadline von 60 Sekunden mit begrenzten Requests;
+die reale Fehler-/Recoverydauer wird später gemessen, nicht aus einer Anzahl
+verschachtelter Retries geraten. Die verbindlichen Host-/JVM-Prüfungen laufen
+innerhalb der Remote-Transaktion unter dem Dateilock, bevor der Deployer Erfolg
+meldet; die öffentliche Pipeline-Prüfung ist zusätzlich. Sonst könnte ein erst
+nach SSM-Erfolg entdeckter Startfehler den automatischen Rollback umgehen.
+Der Startprobe-Client muss zur vorhandenen Python-3.9-Laufzeit passen; seine
+konkrete Umsetzung wird vor dem ersten echten Deploy getestet.
+
+Vor Aktivierung werden beide Zeiger und die Backend-Environmentauswahl
+festgehalten. Bei Fehler nach Aktivierung wird der **vollständige bisherige
+Komponentenzustand** zurückgestellt und erneut geprüft. Ein fehlgeschlagener
+Deploy bleibt auch bei erfolgreicher Wiederherstellung rot. Scheitert diese
+zusätzlich, muss das ausdrücklich sichtbar werden. Beim Frontend-only-Fall
+darf auch der Fehlerpfad nicht das Backend neustarten. Der Dateilock schützt
+weiter, falls der Runner/SSM-Poller ausfällt, während der Remoteprozess läuft.
+
+Backend-Neustarts trennen laufende Spiele; Frontend-only darf das nicht tun.
+Eine spätere Verbesserung wäre Drain/Maintenance oder Blue-Green mit
+Routing, das bestehende Sitzungen erhält. Das wird nur beschrieben, nicht als
+zusätzliche Infrastruktur in diesem Auftrag gebaut.
+
+### 7. Manuelles Deployment und Wiederaufbau
+
+`workflow_dispatch` nimmt einen strikt validierten, bereits veröffentlichten
+Tag wie `v1.2.0` an und deployt **immer beide** Komponenten dieser Version.
+Versionspräfix erst nach Validierung zerlegen; keine unbekannten Tags,
+Shellfragmente, still korrigierten Eingaben oder Neupublikationen akzeptieren.
+Die laufende Version kommt nach Boot weiterhin aus der persistenten Auswahl
+und dem tatsächlichen Jar, nicht aus «latest».
+
+Nach einem erneut ausdrücklich freigegebenen destroy/apply laufen lokale
+Infrastrukturbefehle auf dem bereits genutzten Administrationshost. Der neue
+Host benötigt den freigegebenen Betriebs-Deployer; dieser wird separat
+bereitgestellt, nicht aus einer unkontrollierten alten App-Version als root
+übernommen. Neue Instanz-ID und Spiel-URL werden aus Outputs in den GitHub
+Variables aktualisiert, SSM wird geprüft, Credentials bei Bedarf erneuert.
+Danach stellt ein manueller Deploy den gewünschten veröffentlichten Stand
+wieder her. Die Pipeline selbst führt dabei kein OpenTofu aus.
+
+### 8. Vorgesehene Abnahme, noch nicht durchgeführt
+
+| Versuch | Erwarteter Nachweis |
+|---|---|
+| Frontend-only-Release | Frontend neue Version; Backend alte Version, derselbe Console-PID; Partie läuft weiter |
+| Backend-only-Release | Neue Backend-Version; Frontend-Auswahl/Inhalte unverändert |
+| Release mit beiden Änderungen | Beide Zielversionen, echte Browserpartie |
+| Nur Doku/Metadaten im Release | Expliziter No-op ohne Remoteaktivierung |
+| Normaler Push auf `main`, kein Tag | Kein automatisches App-Deployment |
+| Abgelaufene Credentials | Kontrollierter roter Lauf vor Mutation; nach Erneuerung denselben Release nachdeployen |
+| Rollback `v1.3.0` → `v1.2.0` | Beide Teile gezielt `1.2.0`, alte Artefakte unverändert |
+| Defekter Stand | Healthcheck rot, vorherige Version automatisch wiederhergestellt, tatsächliche Dauer und Lauf dokumentiert |
+| Zwei überlappende Anforderungen | Keine parallele Aktivierung; kein unbemerkter Verlust einer Komponentenänderung |
+| Wiederaufbau | Neue Zielwerte in Variables, gezielter manueller Restore, danach No-op-Plan |
+
+Die konkreten neuen Releases, ein absichtlich defekter Testrelease und ein
+weiterer Löschtest werden **vorher getrennt freigegeben**. Ein bereits im
+Release-Build abgefangener Fehler ist kein Ersatz für einen getesteten
+Deployment-Healthfehler. Bestehende Release-Tests werden dafür nicht heimlich
+ausgeschaltet. Zu jedem echten Versuch gehören Workflow-Link, Versionen,
+relevante PID-/Datei-/Instanzbelege und kontrollierte Logs. Noch keines dieser
+Auftrag-3-Experimente wird durch dieses Konzept als bestanden markiert.
+
+### 9. Umgebungen und Promotion — nur Skizze
+
+```text
+Backendänderung -> Feature/PR -> Tests -> main -> Tag -> Release-Artefakte
+  -> Release-zu-Release-Plan: Backend -> SSM -> Console-Neustart -> Versions-/Spieltest
+Frontendänderung -> Feature/PR -> Tests -> main -> Tag -> Release-Artefakte
+  -> Release-zu-Release-Plan: Frontend -> Zeigerwechsel -> Inhalts-/Konfigtest
+```
+
+Build, geprüfte Komponentenwahl, Auslieferung und Healthchecks werden
+automatisiert; lokale Infrastrukturänderungen, neue Lab-Secrets und bewusst
+gewählte Releases/Rollbacks bleiben Betreiberhandlungen. Für spätere Umgebungen
+`dev → staging → prod` bräuchte die IaC ein Umgebungsparameter-/Modulkonzept,
+eindeutige Ressourcennamen, getrennte States und pro Umgebung passende
+Netz-/Zielwerte und Rollen. Blueprint/Paketversionen bleiben gemeinsam;
+Adressen, Berechtigungen, Kapazität und Konfiguration dürfen unterschiedlich sein.
+Hier werden **keine drei Umgebungen** aufgebaut.
+
+Dasselbe geprüfte Artefakt wird weitergereicht, nicht pro Umgebung neu gebaut.
+Dev könnte nach Veröffentlichung automatisch, staging nach Integrations-/
+Smoke-Tests und prod erst nach Freigabe/Required Reviewers im GitHub Environment
+deployen. Die tatsächliche Konfiguration dieser Schutzregeln wird bei Umsetzung
+geprüft.[6] Für unterschiedlich weit zurückliegende Umgebungen genügt der Diff
+zwischen den zwei zuletzt publizierten Tags nicht: Jede Umgebung braucht ihren
+eigenen belegten Komponentenstand und einen Plan zum gewählten Zielstand.
+
+### 10. Nächste Umsetzungsscheiben nach Konzeptfreigabe
+
+1. SSM-Sende-/Ergebnisrechte sind harmlos nachgewiesen. Environment, drei Secrets
+   und vier Variables sind nach ausdrücklicher Freigabe eingerichtet. Der echte
+   Runner-Zugriff steht bis zum freigegebenen Workflow noch aus; keine Secret-Werte
+   im Chat oder als Nachweis im Repository.
+2. Getrennte, wiederverwendbare Komponentenaktivierung und Rollback im bestehenden
+   `infra/scripts/deploy-release.py` testgetrieben umsetzen; nginx-Umstellung
+   separat prüfen. Erst dann auf die aktuelle Umgebung übernehmen.
+3. Release-Planer als neues `scripts/plan-release-deploy.py` mit Tests unter
+   `scripts/tests/` ergänzen: Metadaten-Ausnahme, Pfadklassen, Vorversion,
+   erster Release, Löschungen/Umbenennungen und ungültige Eingaben.
+4. Erst anschliessend `.github/workflows/deploy.yml` mit den freigegebenen
+   Secrets/Variables, Triggerguards, Sperre, SSM-Polling und Nachweisen ergänzen.
+5. Prüfen, nach `dev` integrieren und die für echte automatische Läufe nötige
+   Main-Promotion/Releases jeweils abstimmen; danach die Abnahmematrix ausführen.
+
+**Freigabestand:** SSM mit temporären Environment-Secrets, getrennte
+Komponentenaktivierung und Verkettung über den erfolgreichen Release-Workflow
+sind als Konzept freigegeben. Der Dokumentationscheckpoint darf nach Prüfung
+über `docs/auftrag-3-konzept` nach `dev` integriert werden und ist dort als
+PR **#22** gemergt, mit grüner Exact-Head-/Merge-CI. Die anschliessende
+Credential-Übernahme wurde separat ausdrücklich erlaubt. Spätere Main-/Release-
+oder Löschfreigaben und die übrigen Umsetzungsscheiben bleiben offen.
+
+### 11. Erster echter SSM-Zugriffstest — 24. November 2026
+
+Um **10:27 UTC** wurde mit dem bestehenden geschützten Profil `tictactest-lab`
+eine kontrollierte `AWS-RunShellScript`-Anweisung an genau die im aktuellen
+IaC-State geführte Instanz gesendet. Zuvor wurden STS-Konto, laufende EC2,
+zugeordnete EIP, Instance Profile, SSM `Online` und beide öffentlichen Versionen
+rein lesend geprüft. Es wurde kein SSH-Zugang als SSM-Ersatz verwendet.
+
+Der übermittelte Bash-/Python-Block las ausschliesslich UID, Dienstzustände,
+Boot-ID/PIDs, aktuelle Release-Auswahl, Jar-Hash und die zwei lokalen
+Versionsendpunkte. Er führte weder `start`/`restart` noch Installationen,
+Konfigurationsänderungen oder Deployments aus. Zwei Snapshots innerhalb des
+Blocks bestätigen denselben Boot und dieselben Dienstprozesse während der Probe.
+
+**Ergebnis:** `SendCommand` akzeptiert; anschliessend wurde
+`GetCommandInvocation` für **dieselbe CommandId und Instanz** bis zum terminalen
+Ergebnis gelesen: **`Success`, ResponseCode `0`**. Der Block lief als **UID 0**.
+Console und nginx waren aktiv; Frontend und Backend meldeten `1.2.0`, und der
+Jar-Hash entsprach weiterhin dem veröffentlichten Digest aus Auftrag 2.
+Öffentliche Versionen sowie EC2-ID/IP/Startzeit/Profile blieben vor/nach der
+Probe gleich; auch der lokale State blieb byte-identisch.
+
+Die vollständigen Parameter, CommandId, AWS-Invocation und Verifikation sind
+privat unter `~/.local/share/tictactest-iac/evidence/auftrag3-ssm-…/` gesichert,
+nicht als Credentials oder als öffentliche Account-/Zielkennung im Repository.
+Die API-Abfolge ist: Ziel aus State/Outputs bestimmen → `ssm send-command`
+mit `AWS-RunShellScript` und explizitem Zeitlimit → CommandId sichern →
+`ssm get-command-invocation` auf genau dieses Paar abfragen → Status/Exitcode
+und Inhalte prüfen. Anfangs noch nicht sichtbare Invocations sind begrenzt
+wiederholbar, echte Zugriffs-/Credentialfehler dagegen nicht.[8][9]
+
+**Was damit bewiesen ist:** Die aktuelle Lab-Identität darf auf diesem Ziel
+einen Befehl ausführen und dessen Ergebnis lesen. Der zukünftige GitHub-Runner
+ist noch nicht eingerichtet und wurde damit nicht getestet. Weil SSM hier
+Root-Befehle ausführen kann, sind die geplanten Workflow-/Environment- und
+Secret-Schutzgrenzen notwendig. Abgelaufene oder neue Lab-Credentials müssen
+später erneut geprüft werden. Der anschliessende, ausdrücklich getrennt
+freigegebene Einrichtungsschritt ist in Abschnitt 12 dokumentiert.
+
+### 12. GitHub-Environment und geschützte Credential-Übernahme — 24. November 2026
+
+Der Nutzer wählte ausdrücklich die geschützte Übernahme des aktuellen
+`tictactest-lab`-Credential-Satzes nach **`philderks/450-tictactest-mvk` →
+Environment `learner-lab`**. Es handelt sich um Environment-Secrets, nicht um
+für sämtliche Jobs bereitgestellte Repository-Secrets.
+
+Um **10:44 UTC** wurde das vorher nicht vorhandene Environment angelegt.
+Vor jeder Secret-Übertragung wurde seine Schutzregel zurückgelesen: exakt
+ein Branchmuster **`main`** vom Typ **`branch`**, keine Tag-/Wildcard-Regel;
+`custom_branch_policies=true`, `protected_branches=false`. Letzteres wählt die
+benannte Regel statt pauschal alle geschützten Branches. Die API trennt diese
+Arten der Environment-Branchsteuerung.[11] Es gibt keine zusätzliche Wartezeit
+oder Reviewer-Pflicht für diese Lab-Automatisierung. An den vorhandenen
+Environments `copilot` und `github-pages` wurde nichts geändert.
+
+**Wichtig:** Das ist keine Garantie, dass nur eine bestimmte Workflowdatei
+Secrets verwenden kann. Ein auf `main` zugelassener Workflow könnte das
+Environment referenzieren. Vertrauenswürdiger Main-Code und die geplanten
+Job-/Eventguards bleiben deshalb erforderlich; keine neue Repo-Branchprotection
+oder andere Sicherheitsrichtlinie wurde stillschweigend eingerichtet.
+
+| Tatsächlich eingerichtet | Verifikation |
+|---|---|
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | Exakt drei Environment-Secret-Namen sowie deren Erstellungs-/Aktualisierungsmetadaten zurückgelesen |
+| `AWS_REGION`, `AWS_ACCOUNT_ID`, `TICTACTEST_INSTANCE_ID`, `TICTACTEST_FRONTEND_URL` | Exakt vier Environment-Variables, Werte gegen die geprüfte Region bzw. privaten State/Account verglichen |
+| `learner-lab`-Branchpolicy | Exakt eine Regel `main`, Typ `branch`, vor und nach Übertragung bestätigt |
+
+**Geschützter Übertragungsweg:** Die AWS CLI löste den ausdrücklich gewählten
+lokalen Credential-Satz auf. Der JSON-Export wurde ausschliesslich intern in
+einem Prozess abgefangen, niemals im Terminal/Chat ausgegeben oder in eine
+neue Credentialdatei geschrieben. Vorher war geprüft, dass CLI-History nicht
+aktiviert ist. Der Exportbefehl ist kein sicherer Anzeige-/Filterbefehl:
+`--query` und `--output` unterdrücken seinen Credential-Export nicht; deshalb
+ihn nicht als vermeintlich gefilterte öffentliche Prüfausgabe ausführen.[10]
+
+Genau der aufgelöste temporäre Satz wurde vor der Übernahme per STS gegen das
+erwartete Konto und per lesender SSM-Ergebnisabfrage geprüft; keine Credentials
+eines Instance Profiles wurden stellvertretend übernommen. Die drei Werte
+gingen danach einzeln über einen internen STDIN-Pipe an `gh secret set`, mit
+explizitem GitHub-Host/Repository und Environment. Kein Wert war Shellargument,
+Repo-/tfvars-/State-Inhalt oder gespeicherter Testnachweis. Der CLI-Transfer
+verschlüsselt Secret-Werte vor dem Senden.[4]
+
+**Was die Rückleseprüfung nicht behauptet:** GitHub liefert gespeicherte Secrets
+nicht als Klartext zurück. Die Metadaten bestätigen Namen und Aktualisierung,
+nicht eine erneute Klartextprüfung. Die exakten Quellwerte wurden lokal validiert;
+ihre Entschlüsselung/Nutzung durch einen echten GitHub-Runner und dessen SSM-
+Aufruf werden erst mit dem später freigegebenen Workflow nachgewiesen. Noch
+existiert kein Deployworkflow und keine automatische App-Auslieferung.
+
+Der rein nichtgeheime Einrichtungsbeleg liegt privat unter
+`~/.local/share/tictactest-iac/evidence/auftrag3-environment-…/`. Andere
+Environments und der lokale Infrastruktur-State blieben unverändert. Nach
+einer neuen Lab-Session muss der aktuelle, vollständige Credential-Satz erneut
+gezielt freigegeben und geschützt aktualisiert werden; ein früherer erfolgreicher
+Upload beweist keine spätere Gültigkeit. Nach einem Hostersatz müssen zusätzlich
+Instanz-ID und Frontend-URL in den Variables erneuert werden.
+
+### 13. Lokaler Split-Deployer — 24. November 2026
+
+**Umfang:** Quellcode und isolierte lokale Tests, keine Live-Migration, keine
+SSM-Schreiboperation, keine Main-Promotion und kein neuer Release. Die bisherigen
+Auftrag-2-Nachweise bleiben historische Nachweise des gekoppelten Layouts.
+
+#### Auswahl und Bedienung nach vorbereiteter Split-Einrichtung
+
+```text
+/opt/tictactest/current          -> deployments/backend/VERSION
+/opt/tictactest/frontend-current -> deployments/frontend/VERSION
+/etc/tictactest/release.env      -> absoluter JAR_PATH des gewählten Backends
+```
+
+Backendcache: unverändertes veröffentlichtes Jar plus dazugehöriges Runtime-ZIP;
+Frontendcache: unveränderte Inhalte des Frontend-ZIPs. Ein kanonischer Receipt
+bindet Dateimenge und Hashes. Sichere vorhandene Caches werden erneut ausgewählt;
+manipulierte, zusätzliche, verlinkte oder unvollständige Inhalte werden abgewiesen,
+nicht durch Löschen und erneutes Herunterladen «repariert». Alte `releases/`
+bleiben erhalten. nginx liefert `/config.js` aus einer exakten, infraeigenen Route
+mit `no-store` und `X-TicTacTest-Layout: split-v1`, nicht aus dem Frontendarchiv.
+
+Erst **nach** gesondert vorbereiteter und geladener Split-Konfiguration:
+
+```bash
+# Auf dem vorbereiteten Zielhost, nicht als sofortiger Migrationsschritt:
+sudo bash deploy-release.sh 1.2.0                       # Standard: beide
+sudo bash deploy-release.sh 1.2.0 --components frontend # zwei Assets
+sudo bash deploy-release.sh 1.2.0 --components backend  # vier Assets
+# Vorhandene veröffentlichte Version bewusst erneut auswählen:
+sudo bash deploy-release.sh 1.1.0 --components both
+```
+
+Alle ausgewählten Prüfsummen bestehen vor dem Entpacken. Der vollständige
+Erstdeploy benötigt beide Komponenten. Ungültige Versionen, unsichere Dateipfade,
+fehlende Split-Auswahl oder eine noch nicht geladene Proxy-Konfiguration brechen
+ab. Frontend-only verändert weder Backendzeiger noch Environment und startet
+auch im Fehlerpfad keine Unit neu. Backend-only startet nur die Console neu;
+der laufende nginx liest die neue Dateiauswahl ohne Neustart.
+
+Die Aktivierung hält einen exklusiven Hostlock. Bei Fehlern stellt sie die rohen
+vorherigen Symlinkziele und die exakten Environmentbytes wieder her und prüft das
+vorherige **gemischte Tupel**. Ein erfolgreicher Rollback lässt das ursprüngliche
+Deployment trotzdem fehlschlagen; ein zusätzlicher Rollbackfehler wird getrennt
+angezeigt. Beim fehlgeschlagenen Erstdeploy werden nur durch diesen Versuch
+aktivierte Units gestoppt; vorbereitete Caches bleiben zur Diagnose erhalten.
+
+#### Echter JVM-Start statt nur Metadaten
+
+`console-smoke.py` ist ein benachbarter operativer Helper, kein neues
+App-Releaseasset. Er öffnet eine eigene ttyd-Sitzung mit Token-/WebSocket-/Origin-
+Handshake und akzeptiert erst den vollständigen tatsächlichen CROSS-Eingabeprompt.
+Er sendet keine Spielzüge und schliesst seine Sitzung auf Erfolgs- und Fehlerpfaden.
+URL, DNS/TLS, HTTP und Frames sind validiert und zeit-/grössenbegrenzt; keine
+Proxy-Umleitung, keine ungeprüften Redirects und keine Tokens im Diagnoseoutput.
+Nur Backend-/Both-Aktivierungen starten diesen Check, Frontend-only nicht.
+Die Gesundheitsprüfung hat ein begrenztes Gesamtzeitbudget, prüft unabhängige
+Versionen und die tatsächlichen Listener. Korrekte Versionsdateien allein sind
+kein erfolgreicher JVM-Start.
+
+#### Tatsächlich lokal ausgeführte Nachweise
+
+Ein isolierter Test lief als normaler Benutzer mit unveränderten veröffentlichten
+Assets `v1.1.0` und `v1.2.0`, geprüftem ttyd1.7.7, Corretto25 und echtem nginx1.30.6.
+Der offizielle nginx-Testcontainer war per Digest gebunden, nonroot, ohne
+Capabilities, mit schreibgeschütztem Root-Dateisystem und nur dem Testverzeichnis
+als Bindmount. Er verwendete neue Loopbackports, nicht die vorhandenen Previews.
+
+| Fall | Beobachtetes Ergebnis |
+|---|---|
+| Erstdeploy `1.1.0`, beide | Sechs echte Releaseassets, echte HTTP-Routen und erfolgreicher neuer Smoke-CLI-Aufruf |
+| Frontend `1.2.0`, Backend `1.1.0` | Nur zwei Assets; Backend-PID, Zeiger und Environment unverändert; dieselbe zuvor begonnene echte JVM-Partie mit `4`, `2`, `6` endet nach dem Wechsel mit CROSS |
+| Backend `1.2.0` | Vier Assets, passende Runtime; Frontendzeiger und nginx-Prozess bleiben erhalten |
+| Backend zurück auf `1.1.0` | Geprüfter Cache wiederverwendet, kein Download; Frontend bleibt `1.2.0` |
+| Absichtlich defektes lokales Test-Jar `9.9.9` | Korrekte Checksummen und Manifest-/HTTP-Version, aber nicht vorhandene Main-Klasse: echter JVM-Check scheitert; vorheriges Tupel Backend `1.1.0` / Frontend `1.2.0` inklusive Environment wird wiederhergestellt und erneut erfolgreich geprüft; Gesamtdeploy bleibt fehlgeschlagen |
+| Beide zurück auf `1.1.0` | Beide vorhandenen Caches erneut ausgewählt, keine Releaseverzeichnisse gelöscht oder Assets neu geladen |
+| Cleanup | Eigener ttyd und Testcontainer beendet; alle drei temporären Listener geschlossen |
+
+`9.9.9` ist ausdrücklich ein synthetisches Fehler-Testartefakt, **kein GitHub-
+Release** und keine Behauptung, dass ein veröffentlichtes Jar defekt sei.
+Der Test ersetzt lediglich Root-Freigabegate, Produktionspfade/-ports,
+Artefakttransport durch einen geprüften lokalen Assetspiegel und systemd durch
+einen Supervisor eigener echter Prozesse. Dateitransaktionen, Prüfungen, nginx,
+ttyd, Java und der neue Smokeclient laufen wirklich. Das beweist lokale
+Integration, nicht EC2/systemd-/SSM-/Runner-Abnahme oder eine Browser-UI-Abnahme.
+Eine zusätzliche echte nginx-Parser-/HTTP-Fixture bestätigt, dass verpacktes
+`config.js` die infraeigene Route nicht überschreibt und der Frontendzeiger ohne
+nginx-Neustart gewechselt werden kann.
+
+Die Regressionen bestehen mit **118 Infrastruktur-/Smoke-, 10 Support- und
+4 Frontendtests**. Selektive Deployments prüfen die Eigentümer, `0755`-Rechte und
+Symlinkfreiheit der Vorordner **beider** bestehenden Komponenten, einschliesslich
+Legacy-Auswahlen, bevor sie deren Inhalte vertrauen. Unsichere Vorordner werden
+nicht repariert. Zusätzliche Regressionen sichern die gemeinsame Deadline
+inklusive Opener-/TLS-Initialisierung und private DNS-Fehler ohne Threadtraceback.
+Nicht abbrechbare DNS-/TLS-Setupworker dürfen nach einem Timeout nur Setup
+abschliessen, niemals verspätet einen Socket öffnen oder einen Handshake starten.
+Python3.9-AST-Prüfung der beiden operativen Pythonhelper,
+Bashsyntax und `tofu fmt -check`/`validate` bestehen. Das echte, isolierte
+OpenTofu-Rendering ohne Provider-/Cloudzugriff erzeugt **8.649 Bytes** User Data,
+mit gültiger Bashsyntax und unveränderten eingebetteten Quelldateien. Es wurde
+kein `plan`/`apply` ausgeführt. Private Testbelege und der reproduzierbare lokale
+Testharness liegen ausserhalb von Git unter
+`~/.local/share/tictactest-iac/evidence/auftrag3-split-local-20261124/`.
+
+#### Bewusst noch nicht ausgeführte Übernahme
+
+Der bestehende Host besitzt weiterhin das gekoppelte Auftrag-2-Layout. Vor einer
+Live-Übernahme müssen seine tatsächlichen Zeiger/Environmentbytes und geladenen
+Dateien gesichert werden. In einem gesondert freigegebenen Schritt sind der
+Frontendzeiger auf den bestehenden Release, die geprüfte neue nginx-Konfiguration
+und ihre kontrollierte Aktivierung vorzubereiten. Die drei operativen Dateien
+`deploy-release.sh`, `deploy-release.py` und `console-smoke.py` müssen benachbart
+übertragen werden. Der neue Deployer migriert eine laufende Legacy-Installation
+**nicht automatisch** und benötigt eine geladene Split-Konfiguration als Beweis.
+
+Eine geänderte Bootstrapquelle ändert ausserdem das nächste User-Data-Rendering.
+Das ist noch keine Gastkonfigurationsänderung; ein späteres lokales
+Infrastruktur-Reconciliation muss bewusst geplant und geprüft werden, weil das
+Anwenden geänderter User Data Stop/Start auslösen kann und cloud-init beim
+vorhandenen Host nicht automatisch erneut läuft. Kein solches Apply gehört in
+den zukünftigen App-Deployworkflow. Release-Planer, Workflowverdrahtung,
+Runner-Credentials-/SSM-Nachweis, freigegebene Promotion und die echte
+Release-Abnahmematrix bleiben die nächsten getrennten Schritte.
+
+### 14. Release-Planer — 24. November 2026
+
+Diese Etappe implementiert nur die **Entscheidungsschicht**, nicht den
+Deployworkflow. Der Planer soll auf einem vertrauenswürdigen aktuellen Checkout
+laufen und ein JSON-Ergebnis erzeugen. Kein Checkout von Zieltag-Code, kein
+Gradle-Aufruf, kein Artefaktdownload, kein AWS-/SSM-Zugriff und kein Schreiben von
+GitHub-Secrets oder Git-Refs gehören in dieses Werkzeug.
+
+**Zwei getrennte Teile:** `scripts/release_changes.py` ordnet Änderungen zu;
+`scripts/plan-release-deploy.py` verbindet diese Zuordnung mit veröffentlichten
+Release-Metadaten und einer überprüften Git-Historie. Beide Werkzeuge bleiben
+von den später auf EC2 übertragenen drei Deploymentdateien getrennt.
+
+Der geplante CLI-Vertrag lautet:
+
+```bash
+# Liest nur GitHub/Git; aktiviert weder Workflow noch Anwendung:
+python3 scripts/plan-release-deploy.py v1.2.0 \
+  --repo philderks/450-tictactest-mvk --mode auto
+python3 scripts/plan-release-deploy.py v1.1.0 \
+  --repo philderks/450-tictactest-mvk --mode manual
+```
+
+Die Release-Liste wird paginiert gelesen. Reguläre Git-Tags ohne zugehörigen
+Release stehen nicht in dieser API-Liste und werden nicht als veröffentlichte
+Vorgänger erfunden.[12] Für den automatischen Plan gilt die höchste kleinere
+kanonische SemVer mit früherer Veröffentlichung und passender Abstammung,
+nicht der letzte Commit oder eine ungefilterte nächste Tag-Markierung.
+Fehlende oder widersprüchliche Daten führen zum Fehler. Der Zielrelease muss
+veröffentlicht/stabil sein und die sechs benötigten Artefakt-/Prüfsummendateien
+anbieten. Die historischen Backend-only-Releases vor `v1.1.0` können diesen
+heutigen Paketvertrag nicht erfüllen; fehlende Frontendpakete werden weder
+gebaut noch nachträglich fingiert.
+
+Ein Tag-Ref kann auf ein Commit oder auf ein annotiertes Tagobjekt zeigen.
+Deshalb werden Referenz und gegebenenfalls Tagobjekte getrennt gelesen und auf
+einen festgehaltenen Commit aufgelöst.[13][15] Remote-/lokaler Commit und die
+Abstammung zu `origin/main` müssen passen. Das veränderliche Releasefeld
+`target_commitish: main` ersetzt diesen Beweis nicht. Der spätere Workflow
+prüft zusätzlich seine eigene Herkunft und den passenden Quell-Release-Lauf.
+
+Git liefert Status und Dateinamen NUL-getrennt, damit insbesondere Umbenennungen,
+Leerzeichen und Zeilenumbrüche nicht mit dem Ausgabeformat verwechselt
+werden.[16] Beide Pfadseiten einer Umbenennung/Kopie werden eingeordnet.
+Unbekannte Pfade sind ein bewusster Fehler, keine implizite No-op-Freigabe.
+Reine Tests/Dokumentation liefern keine App-Auswahl; Betriebsänderungen werden
+zusätzlich im JSON ausgewiesen und damit **nicht** als angewendete
+Gast-/Infrastrukturänderung ausgegeben.
+
+Die Versionsbump-Ausnahme vergleicht die vollständigen `build.gradle`-Inhalte.
+Nur der Wert der einen geprüften Projektversionszuweisung darf abweichen;
+Plugin-/Dependency-Upgrades oder sonstige zusätzliche Änderungen bleiben
+Backendänderungen. Im manuellen Modus werden nach derselben Zielvalidierung
+bewusst beide Komponenten gewählt, auch bei einem älteren unterstützten Release.
+
+**Tatsächlich lokal ausgeführt:** 75 Python-Tests unter `scripts/tests/`
+(einschliesslich der neuen Klassifikations-/Planertests), 118 Infrastrukturtests
+und 4 Frontendtests sind grün. Die vier neuen Pythondateien bestehen die
+Python3.9-AST-Prüfung; dies ist keine Python3.9-Laufzeitzertifizierung.
+
+Die CLI wurde zusätzlich ohne API-Fixtures gegen die echten vorhandenen
+veröffentlichten Releases ausgeführt:
+
+| Read-only Aufruf | Beobachtetes Ergebnis |
+|---|---|
+| `v1.2.0 --mode auto` | Vorgänger `v1.1.0`; nur Frontend; der reine `build.gradle`-Versionsbump zählt als Metadaten. Zielcommit `ce8586372128ba7040748598eb5c3c227c292536` ist gegen Remote-Tag/Main geprüft. |
+| `v1.1.0 --mode manual` | Beide Komponenten, ohne geratenen Vorgänger; Zielcommit `1ea23ba075fce9cc9ea09061ee0e272b2f63a45b`. |
+| `v1.0.1 --mode manual` | Exit1 und leeres JSON-stdout; der historische Release erfüllt den sechs-Dateien-Paketvertrag nicht. Kein Nachbau fehlender Assets. |
+
+Die echten JSON-/Fehlerausgaben und der Zustandsvergleich liegen privat unter
+`~/.local/share/tictactest-iac/evidence/auftrag3-planner-20261124/`. State und
+Remote-Tags sind unverändert. Ein Review fand drei Lücken (mehrdeutige
+Versionszuweisungen, unlesbare Git-Objekte, doppelte Anführungszeichen); sie sind
+behoben und mit Regressionstests sowie separaten Probes nachgeprüft. Ein Klon mit
+absichtlich gelöschtem `build.gradle`-Objekt endet mit Exit 1 ohne Plan. Der spätere Deployworkflow und seine vier echten Release-Abnahmefälle
+bleiben separate Schritte. Insbesondere beweist ein Plan noch keinen
+Runner-Zugriff, keine passende aktive Komponentenbasis und kein durchgeführtes
+Deployment.
+
+### 15. Deployworkflow `deploy.yml` — 24. November 2026
+
+**Stand:** Workflow und Runner-Skript sind geschrieben und lokal getestet. Er ist
+noch nicht auf `main`, ein echter Lauf auf einem GitHub-Runner steht aus.
+
+```text
+Tag vX.Y.Z -> Release (Tests, Build, Assets) -> erfolgreich
+  -> Deploy / plan    ohne Secrets: Tag, Commit, Assets prüfen, Komponenten bestimmen
+       none -> Ende, kein Zugriff auf Secrets
+  -> Deploy / deploy  Environment learner-lab, eine gemeinsame Sperre
+       preflight -> laufende Basis prüfen -> SSM-Befehl -> Ergebnis -> HTTP-Versionen
+Manuell: Run workflow auf main mit Tag -> immer beide Komponenten
+```
+
+| Baustein | Aufgabe |
+|---|---|
+| `scripts/plan-release-deploy.py` | Entscheidet die Komponenten; `--expect-commit` bindet den Plan an den auslösenden Release-Lauf |
+| `infra/scripts/ssm-deploy.py preflight` | STS-Konto und SSM `Online`; bricht bei abgelaufenen Credentials ab, bevor etwas gesendet wird |
+| `infra/scripts/ssm-deploy.py running` | Liest die öffentlich gemeldeten Versionen |
+| `infra/scripts/ssm-deploy.py deploy` | Sendet genau einen SSM-Befehl, wartet auf genau diese `CommandId`, prüft danach öffentlich |
+| `infra/scripts/deploy-release.py` | Läuft auf der EC2, siehe Abschnitt 13 |
+
+Die EC2 lädt die drei Betriebsdateien aus dem **festen Workflow-Commit von `main`**
+und vergleicht sie mit SHA-256-Werten, die der Runner aus seinem Checkout berechnet.
+Erst danach startet der Deployer. Nach `destroy`/`apply` muss deshalb kein Deployer
+vorab auf den neuen Host kopiert werden. Jar und Archive kommen aus dem Release.
+
+**Prüfung der laufenden Basis:** Ein automatischer Teil-Deploy ist nur sicher, wenn
+der Host wirklich den angenommenen Stand hat. Innerhalb der Sperre wird verglichen:
+Eine nicht ausgewählte Komponente darf seit ihrer laufenden Version nicht geändert
+worden sein (sonst wurde ein Release verpasst), und keine Komponente darf neuer als
+das Ziel sein. In beiden Fällen endet der Lauf rot mit Hinweis auf den manuellen Deploy.
+
+#### Antworten zu den Auftragsfragen
+
+- **Warum kein `paths`-Filter?** Er bewertet die Dateien eines Push-Ereignisses.
+  Bei Tag-Pushes wird er nicht ausgewertet, und er kennt den vorherigen Release nicht.
+- **Warum Tag gegen Tag und nicht gegen den letzten Commit?** Zwischen zwei Releases
+  liegen mehrere Commits; ein Vergleich mit `HEAD~1` würde frühere Änderungen übersehen.
+- **Erster Release ohne Vorgänger:** Beide Komponenten werden deployt.
+- **Laufende Partien beim Backend-Neustart:** Sie brechen ab, weil ttyd und damit die
+  JVM-Prozesse beendet werden. Vermeiden liesse sich das mit Drain (keine neuen Partien,
+  laufende beenden) oder Blue-Green. Ein reiner Frontend-Deploy startet nichts neu.
+- **Welche Version startet nach einem Neustart?** `/etc/tictactest/release.env` und der
+  Symlink `current` liegen auf der Disk und überleben Stop/Start.
+- **Frontend-Deployment löscht die Konfiguration?** Ohne `config.js` kennt die Seite
+  weder Console- noch Versionsroute. Darum liefert nginx `/config.js` aus der
+  Infrastrukturkonfiguration; der Deploy prüft sie danach inklusive Header.
+- **Abgelaufene Credentials:** `preflight` endet rot, die App bleibt unverändert und der
+  Release veröffentlicht. Drei Secrets erneuern, dann `Run workflow` mit demselben Tag.
+  STS antwortet auch nach Ende der Lab-Session, darum wird zusätzlich SSM abgefragt.
+- **Nach `destroy`/`apply`:** `TICTACTEST_INSTANCE_ID` und `TICTACTEST_FRONTEND_URL`
+  aktualisieren, bei Bedarf Secrets erneuern, gewünschten Tag manuell deployen.
+
+#### Lokal geprüft
+
+- 82 Script-, 141 Infrastruktur- und 4 Frontendtests grün. Ein Test führt die
+  Remote-Befehle mit echter Bash und manipulierten Dateien aus: Abbruch vor dem Deployer.
+- `preflight` gegen das echte Lab (nur lesend): erfolgreich. Ohne Credentials und mit
+  ungültigem Token: Exit 1 mit Anleitung, ohne Konto-ID oder AWS-Rohtext.
+- Plan-Schritt des Workflows mit echten Releases: `v1.2.0` automatisch ergibt `frontend`,
+  `v1.1.0` manuell ergibt `both`, falscher Commit und unbekannter Tag brechen ab.
+- `actionlint` 1.7.12 meldet nur `queue` als unbekannt; der Schlüssel ist in der
+  aktuellen GitHub-Doku beschrieben.[7]
+
+**Offen:** EC2 auf das getrennte Layout umstellen, `dev` nach `main`, erster echter
+Lauf und die Abnahmematrix aus Abschnitt 8.
+
+## Sources
+
+[1] https://docs.github.com/actions/using-workflows/triggering-a-workflow — GITHUB_TOKEN triggers
+[2] https://docs.github.com/actions/using-workflows/events-that-trigger-workflows — workflow_run
+[3] https://docs.github.com/en/actions/reference/security/secure-use — Workflow security
+[4] https://docs.github.com/en/actions/concepts/security/secrets — Secrets storage
+[5] https://docs.github.com/actions/automating-your-workflow-with-github-actions/creating-and-using-encrypted-secrets — Secrets forks and use
+[6] https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws — AWS OIDC
+[7] https://docs.github.com/en/actions/using-jobs/using-concurrency — Concurrency
+[8] https://docs.aws.amazon.com/systems-manager/latest/userguide/walkthrough-cli.html — AWS Run Command
+[9] https://docs.aws.amazon.com/systems-manager/latest/APIReference/API_GetCommandInvocation.html — SSM eventual consistency
+[10] https://docs.aws.amazon.com/cli/latest/reference/configure/export-credentials.html — AWS CLI credential resolution/export
+[11] https://docs.github.com/en/rest/deployments/branch-policies — GitHub environment deployment branch policies
+[12] https://docs.github.com/en/rest/releases/releases — GitHub REST published releases and pagination
+[13] https://docs.github.com/en/rest/git/refs — GitHub REST references and exact tag lookup
+[15] https://docs.github.com/en/rest/git/tags — GitHub REST annotated tag objects
+[16] https://github.com/git/git/blob/master/Documentation/diff-options.adoc — Upstream Git diff NUL and name-status options

@@ -102,7 +102,12 @@ Infrastruktur bleiben getrennt; ein Release ist keine Infrastruktur-Neuerstellun
 - **Kosten:** Für Auftrag 3 laufen wieder eine micro-Instanz und ihre EIP.
   Das ist kein endgültiges Aufräumen nach Kursende. Das aktuelle Lab-Budget ist
   nicht gemessen; die frühere Angabe «Used $0 of $50» ist keine heutige Messung.
-  Auftrag 3 und optionale S3-Protokolle sind noch nicht implementiert.
+  Die Deploymentautomatisierung aus Auftrag 3 und optionale S3-Protokolle sind
+  noch nicht implementiert. Der lokale Split-Deployer/Smokeclient ist mit echten
+  Release-JARs und isolierten Prozessen geprüft; die laufende EC2 wurde dafür
+  nicht umgestellt. Vor Nutzung des aktuellen Deployercodes die gesonderte
+  [Split-Vorbereitung und Migrationsgrenze](../docs/deployment.md#13-lokaler-split-deployer--24-november-2026)
+  beachten; die historischen Auftrag-2-Befehle sind keine Live-Migrationsanleitung.
 
 ## Auftrag 2, Teil 1: feste Adresse — 23. November 2026
 
