@@ -10,7 +10,7 @@ Die Kernlogik des Spiels (Gewinnerkennung und Spielablauf) soll zuverlässig dur
 |---|---|
 | TZ-01 Gewinnlogik und Regeln | Alle acht Gewinnlinien, Negativfälle, Unentschieden und ungültige Spielerzüge in Unit-/Integrationstests. |
 | TZ-02 Strategien | Greedy-Verhalten im Spiel, PerfectPlayer (gewinnt/blockiert/verliert nie), sowie legale Züge und unverändertes Brett mit jqwik. |
-| TZ-03 Konsolenverhalten | Vollständiger X-Sieg, O-Sieg und Draw via `main()`, ungültige/böswillige Eingaben und EOF mit zeitbegrenzten E2E-Tests. |
+| TZ-03 Konsolenverhalten | Block, O-Sieg und Draw via `main()` gegen den `PerfectPlayer` (seit 1.5.0, X kann nicht mehr gewinnen), ungültige/böswillige Eingaben und EOF mit zeitbegrenzten E2E-Tests. |
 | TZ-04 Automatisierte Qualitätskontrolle | Unit- und E2E-Tests grün, mindestens 90 % **Branch Coverage** im JaCoCo-Gate; PIT-Report vorhanden (derzeit kein PIT-Gate). |
 | TZ-05 Nachvollziehbarkeit | JUnit-/E2E-, JaCoCo- und PIT-Reports im CI-Lauf; Soll/Ist der E2E-Fälle dokumentiert. |
 
@@ -49,16 +49,16 @@ Abgedeckt sind auch ein Unentschieden (`play()` liefert `null`) und ein fehlerha
 
 ### 4. End-to-End-Tests für den Konsoleneinstieg
 
-[`TicTacToeE2ETest`](../src/e2eTest/java/ch/bbw/m450/tictactoe/TicTacToeE2ETest.java) ruft mit JUnit Pioneer `@StdIo` tatsächlich `main()` auf: Eingabe über `System.in`, Ausgabe bis zum Spielresultat über `StdOut`. Der Computer (`GreedyPlayer`) spielt immer das erste freie Feld. Jeder Test hat ein JUnit-Timeout von 5 Sekunden in einem separaten Thread; dadurch kann ein hängender Build abgebrochen werden. Die Suite läuft isoliert über `./gradlew e2eTest`, als Teil von `check` und explizit in [CI](../.github/workflows/ci.yml) mit eigenem JUnit-Report-Artefakt. Testumgebung: Java 25, Gradle-Wrapper und JUnit 6/Pioneer 2.3.0.
+[`TicTacToeE2ETest`](../src/e2eTest/java/ch/bbw/m450/tictactoe/TicTacToeE2ETest.java) ruft mit JUnit Pioneer `@StdIo` tatsächlich `main()` auf: Eingabe über `System.in`, Ausgabe bis zum Spielresultat über `StdOut`. Der Computer (`PerfectPlayer`) spielt immer das erste freie Feld. Jeder Test hat ein JUnit-Timeout von 5 Sekunden in einem separaten Thread; dadurch kann ein hängender Build abgebrochen werden. Die Suite läuft isoliert über `./gradlew e2eTest`, als Teil von `check` und explizit in [CI](../.github/workflows/ci.yml) mit eigenem JUnit-Report-Artefakt. Testumgebung: Java 25, Gradle-Wrapper und JUnit 6/Pioneer 2.3.0.
 
 | Testziel / Eingabe des Menschen (X) | Erwartetes Verhalten | Tatsächlich nach dem Fix (`e2eTest`) |
 |---|---|---|
-| E2E-01 `0,3,6` | X gewinnt; Eingaben bis zum Resultat verarbeitet | Drei X-Aufforderungen, `winner is: CROSS` |
-| E2E-02 `3,4,6` | O gewinnt | Drei X-Aufforderungen, `winner is: CIRCLE` |
-| E2E-03 `1,3,4,6,8` | Volles Spiel endet unentschieden | Fünf X-Aufforderungen, `it's a draw!` |
-| E2E-04 `abc,0,3,6` | Text wird zurückgewiesen; nach neuer Eingabe geht das Spiel weiter | `Invalid input`, anschliessend X-Sieg |
-| E2E-05 `99,0,0,3,6` | Zahl ausserhalb des Brettes und belegtes Feld werden zurückgewiesen | Zwei Rückfragen, anschliessend X-Sieg |
-| E2E-06 Steuerzeichen, `-1`, überlaufende Zahl, `0,3,6` | Böswillige/fehlerhafte Eingaben verursachen weder ungefangene Ausnahme noch Endlosschleife | Drei Zurückweisungen, anschliessend X-Sieg innerhalb von 5 s |
+| E2E-01 `0,3,6` | Der Computer blockt das Gewinnfeld 6 | Feld 6 wird als belegt abgewiesen, kein Sieg |
+| E2E-02 `0,1,3` | O gewinnt | Drei X-Aufforderungen, `winner is: CIRCLE` |
+| E2E-03 `0,1,6,5,8` | Volles Spiel endet unentschieden | Fünf X-Aufforderungen, Schlussbrett und `it's a draw!` |
+| E2E-04 `abc,0,1,3` | Text wird zurückgewiesen; nach neuer Eingabe geht das Spiel weiter | `Invalid input`, anschliessend O-Sieg |
+| E2E-05 `99,0,0,1,3` | Zahl ausserhalb des Brettes und belegtes Feld werden zurückgewiesen | Zwei Rückfragen, anschliessend O-Sieg |
+| E2E-06 Steuerzeichen, `-1`, überlaufende Zahl, `0,1,3` | Böswillige/fehlerhafte Eingaben verursachen weder ungefangene Ausnahme noch Endlosschleife | Drei Zurückweisungen, anschliessend O-Sieg innerhalb von 5 s |
 | E2E-07 `abc`, Leerzeile, Leerzeichen, dann EOF | Endliche Folge ungültiger Eingaben darf nach EOF nicht endlos weiterlaufen | Drei Zurückweisungen, `Input ended. Game stopped.` innerhalb von 5 s |
 | E2E-08 EOF vor dem ersten Zug | Kein Hängen oder Stacktrace ohne Eingabe | `Input ended. Game stopped.` innerhalb von 5 s |
 

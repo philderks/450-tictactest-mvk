@@ -6,6 +6,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionsnu
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-11-24
+
+### Changed
+- Nur Dokumentation: Abnahme des automatischen Deployments, Testkonzept und Release-Anleitung nachgeführt. Backend und Frontend sind unverändert.
+
 ## [1.5.2] - 2026-11-24
 
 ### Fixed
