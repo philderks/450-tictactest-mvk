@@ -1494,6 +1494,7 @@ Zugangsschlüssel; Secrets erscheinen nur maskiert als `***`.
 | `v1.3.0` | Beides: Schlussbrett bei Unentschieden, Regeltext, Smoke-Test | `1.3.0` / `1.3.0` | [Release](https://github.com/philderks/450-tictactest-mvk/actions/runs/45461395738), [Deploy](https://github.com/philderks/450-tictactest-mvk/actions/runs/45461563232) |
 | `v1.4.0` | Nur Frontend: grüne Akzentfarbe | `1.3.0` / `1.4.0` | [Release](https://github.com/philderks/450-tictactest-mvk/actions/runs/45462479657), [Deploy](https://github.com/philderks/450-tictactest-mvk/actions/runs/45462682936) |
 | `v1.5.0` | Nur Backend: `PerfectPlayer` in `main()` | `1.5.0` / `1.4.0` | [Release](https://github.com/philderks/450-tictactest-mvk/actions/runs/45463818382), [Deploy](https://github.com/philderks/450-tictactest-mvk/actions/runs/45464025513) |
+| `v1.5.3` | Weder noch: nur Dokumentation | `1.5.2` / `1.5.2` unverändert, Deployjob übersprungen | [Release](https://github.com/philderks/450-tictactest-mvk/actions/runs/45474998904), [Deploy](https://github.com/philderks/450-tictactest-mvk/actions/runs/45475307849) |
 | Kein Tag | Push auf `main` | unverändert | siehe Tabelle oben |
 
 Auf der EC2 vor und nach `v1.4.0` verglichen: Console-PID `10617`, deren Startzeit,
