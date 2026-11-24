@@ -755,8 +755,9 @@ hat SSM-Befehlsausführung und Ergebnisabfrage mit einem echten reinen Lesebefeh
 nachgewiesen; siehe Abschnitt 11. Dies ist noch keine Deployment-Pipeline.
 Release `1.2.0` läuft unverändert. Das auf `main` beschränkte Environment samt
 drei Secrets und vier Variables ist nach gesonderter Freigabe eingerichtet;
-siehe Abschnitt 12. Ein GitHub-Runner-/Deployworkflow wurde noch nicht erstellt
-oder getestet; kein Deployment, Dienstneustart oder Apply ausgeführt.
+siehe Abschnitt 12. Der Deployworkflow ist geschrieben und lokal geprüft
+(Abschnitt 15), aber noch nicht auf `main` und noch nie auf einem Runner
+gelaufen; kein Pipeline-Deployment, Dienstneustart oder Apply ausgeführt.
 
 ### 1. Entscheidung: GitHub Actions steuert die EC2 über SSM
 
@@ -1392,6 +1393,74 @@ absichtlich gelöschtem `build.gradle`-Objekt endet mit Exit 1 ohne Plan. Der sp
 bleiben separate Schritte. Insbesondere beweist ein Plan noch keinen
 Runner-Zugriff, keine passende aktive Komponentenbasis und kein durchgeführtes
 Deployment.
+
+### 15. Deployworkflow `deploy.yml` — 24. November 2026
+
+**Stand:** Workflow und Runner-Skript sind geschrieben und lokal getestet. Er ist
+noch nicht auf `main`, ein echter Lauf auf einem GitHub-Runner steht aus.
+
+```text
+Tag vX.Y.Z -> Release (Tests, Build, Assets) -> erfolgreich
+  -> Deploy / plan    ohne Secrets: Tag, Commit, Assets prüfen, Komponenten bestimmen
+       none -> Ende, kein Zugriff auf Secrets
+  -> Deploy / deploy  Environment learner-lab, eine gemeinsame Sperre
+       preflight -> laufende Basis prüfen -> SSM-Befehl -> Ergebnis -> HTTP-Versionen
+Manuell: Run workflow auf main mit Tag -> immer beide Komponenten
+```
+
+| Baustein | Aufgabe |
+|---|---|
+| `scripts/plan-release-deploy.py` | Entscheidet die Komponenten; `--expect-commit` bindet den Plan an den auslösenden Release-Lauf |
+| `infra/scripts/ssm-deploy.py preflight` | STS-Konto und SSM `Online`; bricht bei abgelaufenen Credentials ab, bevor etwas gesendet wird |
+| `infra/scripts/ssm-deploy.py running` | Liest die öffentlich gemeldeten Versionen |
+| `infra/scripts/ssm-deploy.py deploy` | Sendet genau einen SSM-Befehl, wartet auf genau diese `CommandId`, prüft danach öffentlich |
+| `infra/scripts/deploy-release.py` | Läuft auf der EC2, siehe Abschnitt 13 |
+
+Die EC2 lädt die drei Betriebsdateien aus dem **festen Workflow-Commit von `main`**
+und vergleicht sie mit SHA-256-Werten, die der Runner aus seinem Checkout berechnet.
+Erst danach startet der Deployer. Nach `destroy`/`apply` muss deshalb kein Deployer
+vorab auf den neuen Host kopiert werden. Jar und Archive kommen aus dem Release.
+
+**Prüfung der laufenden Basis:** Ein automatischer Teil-Deploy ist nur sicher, wenn
+der Host wirklich den angenommenen Stand hat. Innerhalb der Sperre wird verglichen:
+Eine nicht ausgewählte Komponente darf seit ihrer laufenden Version nicht geändert
+worden sein (sonst wurde ein Release verpasst), und keine Komponente darf neuer als
+das Ziel sein. In beiden Fällen endet der Lauf rot mit Hinweis auf den manuellen Deploy.
+
+#### Antworten zu den Auftragsfragen
+
+- **Warum kein `paths`-Filter?** Er bewertet die Dateien eines Push-Ereignisses.
+  Bei Tag-Pushes wird er nicht ausgewertet, und er kennt den vorherigen Release nicht.
+- **Warum Tag gegen Tag und nicht gegen den letzten Commit?** Zwischen zwei Releases
+  liegen mehrere Commits; ein Vergleich mit `HEAD~1` würde frühere Änderungen übersehen.
+- **Erster Release ohne Vorgänger:** Beide Komponenten werden deployt.
+- **Laufende Partien beim Backend-Neustart:** Sie brechen ab, weil ttyd und damit die
+  JVM-Prozesse beendet werden. Vermeiden liesse sich das mit Drain (keine neuen Partien,
+  laufende beenden) oder Blue-Green. Ein reiner Frontend-Deploy startet nichts neu.
+- **Welche Version startet nach einem Neustart?** `/etc/tictactest/release.env` und der
+  Symlink `current` liegen auf der Disk und überleben Stop/Start.
+- **Frontend-Deployment löscht die Konfiguration?** Ohne `config.js` kennt die Seite
+  weder Console- noch Versionsroute. Darum liefert nginx `/config.js` aus der
+  Infrastrukturkonfiguration; der Deploy prüft sie danach inklusive Header.
+- **Abgelaufene Credentials:** `preflight` endet rot, die App bleibt unverändert und der
+  Release veröffentlicht. Drei Secrets erneuern, dann `Run workflow` mit demselben Tag.
+  STS antwortet auch nach Ende der Lab-Session, darum wird zusätzlich SSM abgefragt.
+- **Nach `destroy`/`apply`:** `TICTACTEST_INSTANCE_ID` und `TICTACTEST_FRONTEND_URL`
+  aktualisieren, bei Bedarf Secrets erneuern, gewünschten Tag manuell deployen.
+
+#### Lokal geprüft
+
+- 82 Script-, 141 Infrastruktur- und 4 Frontendtests grün. Ein Test führt die
+  Remote-Befehle mit echter Bash und manipulierten Dateien aus: Abbruch vor dem Deployer.
+- `preflight` gegen das echte Lab (nur lesend): erfolgreich. Ohne Credentials und mit
+  ungültigem Token: Exit 1 mit Anleitung, ohne Konto-ID oder AWS-Rohtext.
+- Plan-Schritt des Workflows mit echten Releases: `v1.2.0` automatisch ergibt `frontend`,
+  `v1.1.0` manuell ergibt `both`, falscher Commit und unbekannter Tag brechen ab.
+- `actionlint` 1.7.12 meldet nur `queue` als unbekannt; der Schlüssel ist in der
+  aktuellen GitHub-Doku beschrieben.[7]
+
+**Offen:** EC2 auf das getrennte Layout umstellen, `dev` nach `main`, erster echter
+Lauf und die Abnahmematrix aus Abschnitt 8.
 
 ## Sources
 
