@@ -1314,6 +1314,85 @@ den zukünftigen App-Deployworkflow. Release-Planer, Workflowverdrahtung,
 Runner-Credentials-/SSM-Nachweis, freigegebene Promotion und die echte
 Release-Abnahmematrix bleiben die nächsten getrennten Schritte.
 
+### 14. Release-Planer — 24. November 2026
+
+Diese Etappe implementiert nur die **Entscheidungsschicht**, nicht den
+Deployworkflow. Der Planer soll auf einem vertrauenswürdigen aktuellen Checkout
+laufen und ein JSON-Ergebnis erzeugen. Kein Checkout von Zieltag-Code, kein
+Gradle-Aufruf, kein Artefaktdownload, kein AWS-/SSM-Zugriff und kein Schreiben von
+GitHub-Secrets oder Git-Refs gehören in dieses Werkzeug.
+
+**Zwei getrennte Teile:** `scripts/release_changes.py` ordnet Änderungen zu;
+`scripts/plan-release-deploy.py` verbindet diese Zuordnung mit veröffentlichten
+Release-Metadaten und einer überprüften Git-Historie. Beide Werkzeuge bleiben
+von den später auf EC2 übertragenen drei Deploymentdateien getrennt.
+
+Der geplante CLI-Vertrag lautet:
+
+```bash
+# Liest nur GitHub/Git; aktiviert weder Workflow noch Anwendung:
+python3 scripts/plan-release-deploy.py v1.2.0 \
+  --repo philderks/450-tictactest-mvk --mode auto
+python3 scripts/plan-release-deploy.py v1.1.0 \
+  --repo philderks/450-tictactest-mvk --mode manual
+```
+
+Die Release-Liste wird paginiert gelesen. Reguläre Git-Tags ohne zugehörigen
+Release stehen nicht in dieser API-Liste und werden nicht als veröffentlichte
+Vorgänger erfunden.[12] Für den automatischen Plan gilt die höchste kleinere
+kanonische SemVer mit früherer Veröffentlichung und passender Abstammung,
+nicht der letzte Commit oder eine ungefilterte nächste Tag-Markierung.
+Fehlende oder widersprüchliche Daten führen zum Fehler. Der Zielrelease muss
+veröffentlicht/stabil sein und die sechs benötigten Artefakt-/Prüfsummendateien
+anbieten. Die historischen Backend-only-Releases vor `v1.1.0` können diesen
+heutigen Paketvertrag nicht erfüllen; fehlende Frontendpakete werden weder
+gebaut noch nachträglich fingiert.
+
+Ein Tag-Ref kann auf ein Commit oder auf ein annotiertes Tagobjekt zeigen.
+Deshalb werden Referenz und gegebenenfalls Tagobjekte getrennt gelesen und auf
+einen festgehaltenen Commit aufgelöst.[13][15] Remote-/lokaler Commit und die
+Abstammung zu `origin/main` müssen passen. Das veränderliche Releasefeld
+`target_commitish: main` ersetzt diesen Beweis nicht. Der spätere Workflow
+prüft zusätzlich seine eigene Herkunft und den passenden Quell-Release-Lauf.
+
+Git liefert Status und Dateinamen NUL-getrennt, damit insbesondere Umbenennungen,
+Leerzeichen und Zeilenumbrüche nicht mit dem Ausgabeformat verwechselt
+werden.[16] Beide Pfadseiten einer Umbenennung/Kopie werden eingeordnet.
+Unbekannte Pfade sind ein bewusster Fehler, keine implizite No-op-Freigabe.
+Reine Tests/Dokumentation liefern keine App-Auswahl; Betriebsänderungen werden
+zusätzlich im JSON ausgewiesen und damit **nicht** als angewendete
+Gast-/Infrastrukturänderung ausgegeben.
+
+Die Versionsbump-Ausnahme vergleicht die vollständigen `build.gradle`-Inhalte.
+Nur der Wert der einen geprüften Projektversionszuweisung darf abweichen;
+Plugin-/Dependency-Upgrades oder sonstige zusätzliche Änderungen bleiben
+Backendänderungen. Im manuellen Modus werden nach derselben Zielvalidierung
+bewusst beide Komponenten gewählt, auch bei einem älteren unterstützten Release.
+
+**Tatsächlich lokal ausgeführt:** 75 Python-Tests unter `scripts/tests/`
+(einschliesslich der neuen Klassifikations-/Planertests), 118 Infrastrukturtests
+und 4 Frontendtests sind grün. Die vier neuen Pythondateien bestehen die
+Python3.9-AST-Prüfung; dies ist keine Python3.9-Laufzeitzertifizierung.
+
+Die CLI wurde zusätzlich ohne API-Fixtures gegen die echten vorhandenen
+veröffentlichten Releases ausgeführt:
+
+| Read-only Aufruf | Beobachtetes Ergebnis |
+|---|---|
+| `v1.2.0 --mode auto` | Vorgänger `v1.1.0`; nur Frontend; der reine `build.gradle`-Versionsbump zählt als Metadaten. Zielcommit `ce8586372128ba7040748598eb5c3c227c292536` ist gegen Remote-Tag/Main geprüft. |
+| `v1.1.0 --mode manual` | Beide Komponenten, ohne geratenen Vorgänger; Zielcommit `1ea23ba075fce9cc9ea09061ee0e272b2f63a45b`. |
+| `v1.0.1 --mode manual` | Exit1 und leeres JSON-stdout; der historische Release erfüllt den sechs-Dateien-Paketvertrag nicht. Kein Nachbau fehlender Assets. |
+
+Die echten JSON-/Fehlerausgaben und der Zustandsvergleich liegen privat unter
+`~/.local/share/tictactest-iac/evidence/auftrag3-planner-20261124/`. State und
+Remote-Tags sind unverändert. Ein Review fand drei Lücken (mehrdeutige
+Versionszuweisungen, unlesbare Git-Objekte, doppelte Anführungszeichen); sie sind
+behoben und mit Regressionstests sowie separaten Probes nachgeprüft. Ein Klon mit
+absichtlich gelöschtem `build.gradle`-Objekt endet mit Exit 1 ohne Plan. Der spätere Deployworkflow und seine vier echten Release-Abnahmefälle
+bleiben separate Schritte. Insbesondere beweist ein Plan noch keinen
+Runner-Zugriff, keine passende aktive Komponentenbasis und kein durchgeführtes
+Deployment.
+
 ## Sources
 
 [1] https://docs.github.com/actions/using-workflows/triggering-a-workflow — GITHUB_TOKEN triggers
@@ -1327,3 +1406,7 @@ Release-Abnahmematrix bleiben die nächsten getrennten Schritte.
 [9] https://docs.aws.amazon.com/systems-manager/latest/APIReference/API_GetCommandInvocation.html — SSM eventual consistency
 [10] https://docs.aws.amazon.com/cli/latest/reference/configure/export-credentials.html — AWS CLI credential resolution/export
 [11] https://docs.github.com/en/rest/deployments/branch-policies — GitHub environment deployment branch policies
+[12] https://docs.github.com/en/rest/releases/releases — GitHub REST published releases and pagination
+[13] https://docs.github.com/en/rest/git/refs — GitHub REST references and exact tag lookup
+[15] https://docs.github.com/en/rest/git/tags — GitHub REST annotated tag objects
+[16] https://github.com/git/git/blob/master/Documentation/diff-options.adoc — Upstream Git diff NUL and name-status options
