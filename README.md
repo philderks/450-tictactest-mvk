@@ -2,6 +2,18 @@
 
 Ein kleines TicTacToe-Spiel in Java mit einem menschlichen Spieler (`HumanPlayer`) und einem Computer-Spieler (`PerfectPlayer`), der nie verliert. Der einfache `GreedyPlayer` (belegt stets das erste freie Feld) bleibt für Tests erhalten.
 
+**Web-App: <http://32.195.31.203/>** (läuft im AWS Learner Lab und ist nur erreichbar, solange die Lab-Session aktiv ist)
+
+## Dokumentation
+
+| Thema | Dokument |
+|---|---|
+| Auftrag 1: Web-Konsole, Frontend, Versionsabfrage | [docs/webkonsole.md](docs/webkonsole.md) |
+| Auftrag 2: Infrastruktur mit OpenTofu, manuelles Deployment, Robustheit | [infra/README.md](infra/README.md), [docs/deployment.md](docs/deployment.md) |
+| Auftrag 3: Secrets-Konzept, automatisches Deployment, Nachweise, Promotion | [docs/deployment.md](docs/deployment.md#auftrag-3-deployment-konzept--freigegeben-24-november-2026) |
+| Release-Prozess und Änderungen | [RELEASE.md](RELEASE.md), [CHANGELOG.md](CHANGELOG.md) |
+| Tests | [docs/testkonzept.md](docs/testkonzept.md), [docs/tests.md](docs/tests.md) |
+
 ## Voraussetzungen
 
 - JDK 25 (wird über den Gradle-Toolchain-Mechanismus bei Bedarf automatisch bezogen)
