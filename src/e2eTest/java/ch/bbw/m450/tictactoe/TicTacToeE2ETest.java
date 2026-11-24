@@ -14,41 +14,42 @@ class TicTacToeE2ETest {
 
 	@Test
 	@Timeout(value = 5, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-	@StdIo({"abc", "0", "3", "6"})
+	@StdIo({"abc", "0", "1", "3"})
 	void invalidTextIsRejectedAndPlayerCanFinishGame(StdOut out) {
 		TicTacToeMain.main(new String[0]);
 
 		assertThat(out.capturedString()).contains("Invalid input");
-		assertThat(out.capturedString()).contains("...and the winner is: CROSS");
+		assertThat(out.capturedString()).contains("...and the winner is: CIRCLE");
 	}
 
 	@Test
 	@Timeout(value = 5, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-	@StdIo({"99", "0", "0", "3", "6"})
+	@StdIo({"99", "0", "0", "1", "3"})
 	void outOfRangeAndOccupiedFieldsAreRejectedBeforeFinishing(StdOut out) {
 		TicTacToeMain.main(new String[0]);
 
 		assertThat(out.capturedLines())
 				.filteredOn(line -> line.contains("Choose a free field from 0 to 8"))
 				.hasSize(2);
-		assertThat(out.capturedString()).contains("...and the winner is: CROSS");
+		assertThat(out.capturedString()).contains("...and the winner is: CIRCLE");
 	}
 
 	@Test
 	@Timeout(value = 5, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
 	@StdIo({"0", "3", "6"})
-	void crossWinsCompleteConsoleGame(StdOut out) {
+	void computerBlocksTheWinningFieldOfCross(StdOut out) {
 		TicTacToeMain.main(new String[0]);
 
+		// 0-3-6 would win, but the perfect player already occupies field 6.
 		assertThat(out.capturedLines())
-				.filteredOn(line -> line.contains("where to put the next CROSS"))
-				.hasSize(3);
-		assertThat(out.capturedString()).contains("...and the winner is: CROSS");
+				.filteredOn(line -> line.contains("Choose a free field from 0 to 8"))
+				.hasSize(1);
+		assertThat(out.capturedString()).doesNotContain("...and the winner is:");
 	}
 
 	@Test
 	@Timeout(value = 5, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-	@StdIo({"3", "4", "6"})
+	@StdIo({"0", "1", "3"})
 	void circleWinsCompleteConsoleGame(StdOut out) {
 		TicTacToeMain.main(new String[0]);
 
@@ -60,7 +61,7 @@ class TicTacToeE2ETest {
 
 	@Test
 	@Timeout(value = 5, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-	@StdIo({"1", "3", "4", "6", "8"})
+	@StdIo({"0", "1", "6", "5", "8"})
 	void drawCompletesConsoleGame(StdOut out) {
 		TicTacToeMain.main(new String[0]);
 
@@ -69,22 +70,22 @@ class TicTacToeE2ETest {
 				.hasSize(5);
 		// Like a win, a draw shows the complete final board.
 		var finalBoard = new Stone[] {
-				Stone.CIRCLE, Stone.CROSS, Stone.CIRCLE,
 				Stone.CROSS, Stone.CROSS, Stone.CIRCLE,
+				Stone.CIRCLE, Stone.CIRCLE, Stone.CROSS,
 				Stone.CROSS, Stone.CIRCLE, Stone.CROSS };
 		assertThat(out.capturedString()).contains(TicTacToeMain.toString(finalBoard) + "it's a draw!");
 	}
 
 	@Test
 	@Timeout(value = 5, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-	@StdIo({"\033[31m", "-1", "999999999999999999999999999999", "0", "3", "6"})
+	@StdIo({"\033[31m", "-1", "999999999999999999999999999999", "0", "1", "3"})
 	void hostileControlCharactersAndHugeNumbersCannotInterruptGame(StdOut out) {
 		TicTacToeMain.main(new String[0]);
 
 		assertThat(out.capturedLines())
 				.filteredOn(line -> line.contains("Invalid input.") || line.contains("Choose a free field"))
 				.hasSize(3);
-		assertThat(out.capturedString()).contains("...and the winner is: CROSS");
+		assertThat(out.capturedString()).contains("...and the winner is: CIRCLE");
 	}
 
 	@Test
